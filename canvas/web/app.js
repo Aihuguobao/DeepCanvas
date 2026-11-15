@@ -1054,7 +1054,6 @@ const HELP = {
   'gen.note': '空镜的补充描述：写材质、布局、能看见的东西，越具体越像真照片。\n中文即可，生成前会自动翻成英文。\n例：磨花的深色木地板、玻璃上有手印和灰尘、窗外城市灯光有光晕、35mm 实拍、轻微噪点',
   'project.retention': '全剧保留项：写一次，所有镜头都会带上。\n只写"跨镜必须不变"的：服装、标志性配饰、道具。\n例：角色1永远穿深蓝油布外套；角色2永远戴白安全帽和橙色反光背心；扳手始终是银色那把',
   'project.sage': '提速开关：把画面计算的算法换成更快的那个，一般能快一半左右，画质看不出差别。\n\n· 自动 —— 一般用这个，按显卡自己挑\n· 极速 —— 50 系显卡专用，通常最快；出错就退回「自动」\n· 关 —— 排查问题时用',
-  'video.control': '照着一段视频里的动作来生成。\n\n和「参考视频」不是一回事：\n· 参考视频：只看个大概感觉，动作只能大致对上\n· 这个：一格一格对着来，动作跟得很死\n\n用法：填一段本地视频的路径。\n· 骨架（推荐）：先从那段视频里提出人体骨架，只学动作，不改脸和衣服\n· 整图：直接把画面当模板，跟得更死，但会把那段视频的光影和构图也带进来\n\n强度：默认 1.0；觉得没跟上再往上加。',
   'project.grade': '电影感调色：出片后自动跑一次 ffmpeg 垂直渐变，把画面下半幅压暗。\n\n为什么需要：模型自己能把上/下亮度差做到最多 19.5，而官方样例是 34.3——\n地面（尤其湿地反光）天生偏亮，提示词压不下去。一条渐变（顶 ×1.10 / 底 ×0.76）\n实测把差值拉到 32.7–35.0，暗部占比 33–35%，与样例基本重合。\n\n确定性操作，不引入随机性；原片保留为 *_raw.mp4，调色版为 *_graded.mp4。\n配合「5 秒 3 刀 + 人物占比 ≤1/6 + 逆光剪影」才完整，单开调色只是压暗。',
   'subtitle': '字幕内容，暂时权重最低，可以最后再填。',
   // 角色卡和场景卡直接用 role 名（look/outfit/props/light），这里补一份
@@ -1331,24 +1330,11 @@ function shotPanel(s) {
         <option value="39"${(Number(vid.link_frames) === 39) ? ' selected' : ''}>39 帧（1.6 秒，最连贯但最占动作时间）</option>
       </select></div>
     ${field('字幕', s.subtitle, null, { role: 'subtitle' })}
-    <div class="field"><label>照着一段视频的动作演（可空）${helpIcon('video.control')}</label>
-      <input type="text" data-role="video.control" value="${esc(vid.control || '')}"
-             placeholder="粘贴本地视频路径，例如 D:\\素材\\跑步.mp4">
-      <div class="meta">填了就按这个视频里的动作生成（「骨架」模式只学动作，最稳）。留空 = 不用。</div></div>
-    <div class="row">
-      <div class="field"><label>步数${helpIcon('video.steps')}</label>
-        <select data-role="video.steps">
-          <option value="8"${(Number(vid.steps) || 8) === 8 ? ' selected' : ''}>8 步（快，画质略降）</option>
-          <option value="25"${Number(vid.steps) === 25 ? ' selected' : ''}>25 步（慢，画面更稳）</option>
-        </select></div>
-      <div class="field"><label>控制类型</label>
-        <select data-role="video.control_mode">
-          <option value="pose"${(vid.control_mode || 'pose') === 'pose' ? ' selected' : ''}>骨架（推荐·只取动作）</option>
-          <option value="raw"${vid.control_mode === 'raw' ? ' selected' : ''}>整图（跟得更死）</option>
-        </select></div>
-      <div class="field"><label>控制强度</label>
-        <input type="text" data-role="video.control_strength" value="${esc(String(vid.control_strength || '1.0'))}"></div>
-    </div>
+    <div class="field"><label>步数${helpIcon('video.steps')}</label>
+      <select data-role="video.steps">
+        <option value="8"${(Number(vid.steps) || 8) === 8 ? ' selected' : ''}>8 步（快，画质略降）</option>
+        <option value="25"${Number(vid.steps) === 25 ? ' selected' : ''}>25 步（慢，画面更稳）</option>
+      </select></div>
     <div class="actions">
       <button id="btnVideo">出视频</button>
       <select id="runCount" title="连跑几条：每条换一个新种子，提示词不变" style="width:auto">
