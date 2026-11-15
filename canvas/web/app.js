@@ -1151,7 +1151,6 @@ function shotPanel(s) {
       </select></div>
     <div class="field"><label>接续帧数${helpIcon('video.link_frames')}</label>
       <select data-role="video.link_frames">
-        <option value="1"${(Number(vid.link_frames) === 1) ? ' selected' : ''}>1 帧（单帧钉帧 · 用于 frame）</option>
         <option value="5"${((Number(vid.link_frames) || 22) === 5) ? ' selected' : ''}>5 帧（0.2 秒，只给接续线索）</option>
         <option value="22"${((Number(vid.link_frames) || 22) === 22) ? ' selected' : ''}>22 帧（0.9 秒，动作延续更明显 · 默认）</option>
         <option value="39"${(Number(vid.link_frames) === 39) ? ' selected' : ''}>39 帧（1.6 秒，最连贯但最占动作时间）</option>
@@ -1385,7 +1384,7 @@ function shotPanel(s) {
       patch.video = { [role.slice(6)]: value }
       // 选「钉上一镜末帧 frame」时接续帧数自动落 1：它的语义就是单帧钉帧，
       // 留着 22 会走片段钉帧分支（steps/video.py 里 want_frames>1 走 clip）。
-      if (role === 'video.link' && value === 'frame') patch.video.link_frames = 1
+      if (role === 'video.link' && value === 'frame') patch.video.link_frames = 5
     }
     else if (role.startsWith('project.')) {
       // 项目级字段，走另一个接口

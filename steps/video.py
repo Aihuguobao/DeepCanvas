@@ -380,22 +380,8 @@ def run(ep: str, sid: str, dry: bool = False, engine: str = "", force: bool = Fa
         if prev_video:
             print(f"  母版 {os.path.basename(prev_video)}")
         if link in ("frame", "both"):
-            last_png = prev_last
-            if (not last_png or not os.path.isfile(last_png)) and prev_video:
-                try:
-                    last_png = os.path.join(store.PROJECTS, store.slug(ep), "assets",
-                                            f"{prev_shot['id']}_last.png")
-                    media.last_frame(prev_video, last_png)
-                except RuntimeError as exc:
-                    print(f"  ! 承接失败：抽不出上一镜末帧（{exc}）")
-                    last_png = ""
-            # link_frames=1 → 单帧静帧（旧做法，接缝最准）；>=5 → 片段
-            want_frames = int((shot.get("video") or {}).get("link_frames") or 22)
-            if want_frames <= 1 and prev_last and os.path.isfile(prev_last):
-                guide_imgs.append((comfy.upload_image(prev_last, prefix="link"), 0))
-                print(f"  钉住 {prev_shot['id']} 的末帧（单帧）@ 第 0 帧")
-            elif prev_video and os.path.isfile(prev_video):
-                # 真接续：喂上一镜最后 22 帧的片段（官方推荐做法），而不是一张静帧
+            if prev_video and os.path.isfile(prev_video):
+                # 接续只喂片段（1 帧档已去掉）
                 info = media.probe(prev_video)
                 # probe 返回的 fps 是 "24 fps" 这种字符串，得解析出数字
                 import re as _re
@@ -405,15 +391,13 @@ def run(ep: str, sid: str, dry: bool = False, engine: str = "", force: bool = Fa
                 # 钉多少帧可配：5/22/39（都必须满足 17k+5）
                 want = int((shot.get("video") or {}).get("link_frames") or 5)
                 want = min(want, total)
-                if want <= 1:
-                    want = 1
-                elif want < 22:
+                if want < 22:
                     want = 5
                 elif want < 39:
                     want = 22
                 else:
                     want = 39
-                length = min(want, max(5, total)) if want > 1 else 1
+                length = min(want, max(5, total))
                 start = max(0, total - length)
                 clip_name = comfy.put_file(prev_video, prefix="linkclip")
                 guide_clips.append((clip_name, 0, start, length))
