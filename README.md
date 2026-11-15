@@ -32,10 +32,10 @@
 | 系统 | Windows 10 / 11 64 位 | 启动脚本是 `.bat`，Linux / macOS 没有现成脚本 |
 | Python | **3.10 或更新**（实测） | 只给画布用，不需要 CUDA / torch |
 | ComfyUI | 建议 **0.42.1 或更新**（实测） | 太老的版本会缺 H3 官方节点（`MiniMaxH3*`），升级 ComfyUI 即可 |
-| 自定义节点 | 5 个包（见第 5 步） | 其余节点全是 ComfyUI 自带 |
-| 模型 | **必需 8 个，可选 4 项** | 见第 6 步；可选那组只在用「多角度 / 去人」时才要 |
+| 自定义节点 + 模型 | **一个「必备组件」包**（见第 5、6 步） | 网盘下载，双击一键部署，含节点和三套权重 |
+| 显卡档位 | 8–12 GB 用轻量包 / 16 GB 以上用高配包 | 选错包跑不动，见 6.1 |
 | 显卡 | 建议 **24 GB 显存**（实测） | 显存小会 OOM，16 GB 很勉强 `[未在 16GB 实测]` |
-| git（可选） | 装节点包用 | 不装也能用 ZIP 下载，见第 5 步 |
+| git（不用装） | — | 节点已打进组件包，不需要 git |
 
 ---
 
@@ -138,98 +138,95 @@ python -c "import fastapi, uvicorn, cv2, PIL, numpy, websockets, imageio_ffmpeg;
 
 ---
 
-## 6. 第 5 步：装 5 个自定义节点包
+## 6. 第 5、6 步：装节点和模型 —— 用「必备组件」包，一步搞定
 
-只有 5 个包，其余用到的节点全是 ComfyUI 自带（`nodes` / `comfy_extras`）。
+> 以前这两步是「一个个 clone 节点、一个个下模型」。现在换成组件包：
+> **解压 → 双击 `一键部署.bat` → 选 ComfyUI 目录 → 完事。**
 
-| 包 | 装的节点 | 仓库 |
+### 6.1 下载组件包
+
+**百度网盘**：<https://pan.baidu.com/s/1LbQOaOCKMBJEwvgbTGxcPQ?pwd=moka>　提取码：**moka**
+
+包名里的「轻量 / 高配」指的是**跑得动的显卡档位**，先看你的显存再挑：
+
+| 包 | 出片主模型 | 文本编码器 | 适合的显卡 |
+|---|---|---|---|
+| `必备组件-轻量` | W4A8（11.68 GB） | 4B + ClipProj 投影 | **8–12 GB 显存** |
+| `必备组件-高配` | int8（19.53 GB） | 32B（14.61 GB） | **16 GB 显存以上** |
+
+轻量版用的时候，画布里要把「出片模型档位」选成「显存不够时用（W4A8）」——
+**显存低于 12 GB 的话画布会自动帮你切，不用手动点**；同时「用首帧出片」会被禁用（见 6.4 末尾的说明）。
+
+### 6.2 怎么装
+
+1. 解压到任意位置（路径别带特殊符号，空格可以）。
+2. **双击 `一键部署.bat`**。
+3. 弹窗里选 **ComfyUI 根目录** —— 就是里面直接有 `models` 和 `custom_nodes` 两个文件夹的那一层。
+   （如果你用的是整合包，通常路径像 `...\ComfyUI-aki\ComfyUI-aki-v3\ComfyUI`；
+   选到 `ComfyUI-aki-v3` 这一层它会提示「不像 ComfyUI」。）
+4. 确认复制；最后问「装 N 个节点包的 pip 依赖」时选 **Y**。
+5. **重启一次 ComfyUI**，节点才会加载。
+
+它自己干这几件事：
+
+- 把包里的 `models\` 和 `custom_nodes\` 按原结构复制到 ComfyUI（已存在且大小相同的文件跳过，不会重复拷几十 GB）；
+- 会读 `extra_model_paths.yaml`：如果模型挂在别的盘，它认得出来，不会误判成缺文件再复制一份；
+- 用 **ComfyUI 自带的 Python** 装节点依赖：先预演一遍，缺什么装什么，已经满足的直接跳过；
+- 不会去碰 ComfyUI 其它文件。
+
+### 6.3 包里都有什么，哪些其实可以不装
+
+**节点包**（部署时整份复制，依赖自动装）：
+
+| 包 | 用途 | 必需吗 |
 |---|---|---|
-| ComfyUI-Spectrum-MiniMax-H3 | `SpectrumApplyMiniMaxH3` | <https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3> |
-| ComfyUI-H3-Latent-Relay | `H3RelaySeedFromVideo` / `H3RelayCopyBridge` / `H3RelayLatentSave` / `H3RelayTrimAV` | <https://github.com/ZenHG/ComfyUI-H3-Latent-Relay> |
-| comfyui-kjnodes | `PathchSageAttentionKJ`（加速，缺了会自动退回 SDPA，只是慢） | <https://github.com/kijai/ComfyUI-KJNodes> |
-| ComfyUI-RMBG | `BiRefNetRMBG`（场景「去人」用） | <https://github.com/1038lab/ComfyUI-RMBG> |
-| comfyui-frame-interpolation | `RIFE VFI`（补帧用） | <https://github.com/Fannovel16/ComfyUI-Frame-Interpolation> |
+| `ComfyUI-Spectrum-MiniMax-H3` | H3 出片的核心节点，**没有它出不了片** | **必需** |
+| `ComfyUI-H3-Latent-Relay` | 续镜衔接、多段拼接 | 强烈建议 |
+| `comfyui-kjnodes` | SageAttention 加速（缺了自动退回 SDPA，只是慢） | 建议 |
+| `ComfyUI-RMBG` | 场景「把参考图里的人去掉」 | 可选 |
+| `comfyui-frame-interpolation` | 补帧 | 可选 |
+| `ComfyUI-ClipProj` | **只有轻量包带**，低显存档的 4B 编码器必须配它 | 轻量版必需 |
 
-**git 方式**——在 `ComfyUI\custom_nodes\` 下开 cmd，逐条执行：
+**模型**（按用途分三组）：
 
-```bat
-cd /d <你的ComfyUI目录>\custom_nodes
+| 文件 | 大小 | 用途 | 必需吗 |
+|---|---|---|---|
+| `krea2_turbo_fp8_scaled.safetensors` | 12.24 GB | 出图：首帧 / 角色设定图 / 场景空镜 / 四视角 | **必需** |
+| `qwen3vl_4b_fp8_scaled.safetensors` | 4.88 GB | 上面那条出图链的文本编码器 | **必需** |
+| `qwen_image_vae.safetensors` | 0.24 GB | 出图链的 VAE | **必需** |
+| ref2va 主模型（高配 int8 / 轻量 W4A8） | 19.53 / 11.68 GB | 出片主模型：**用参考图出视频** | **必需** |
+| `qwen3vl_32b_…`（高配）/ `qwen3vl_4b_int8_convrot` + `ClipProj`（轻量） | 14.61 / 5.01 GB | 出片链的文本编码器 | **必需** |
+| `minimax_h3_video_vae_int8_convrot.safetensors` | 2.62 GB | 出片：视频 VAE | **必需** |
+| `minimax_h3_audio_vae_fp32.safetensors` | 0.56 GB | 出片：音频 VAE（出片带声音就靠它） | **必需** |
+| `minimax_h3_ref2v_turbo_8step…`（仅高配） | 1.82 GB | 参考图出片的加速 LoRA（8 步） | 高配必需 |
+| `krea2_identity_edit_v2.safetensors` | 1.70 GB | 首帧「锁住这个人」 | **必需** |
+| `krea2_style_reference.safetensors` | 0.43 GB | 角色设定集「换视角」 | **必需** |
+| `QuadView_krea2_v1.safetensors` | 0.85 GB | 「生成四视角图」 | **必需** |
+| `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 19.53 GB | **只在「用首帧出片」这条路线用** | 看情况 |
+| `minimax_h3_fl2v_turbo_8step…` | 1.82 GB | 同上，首帧出片的加速 LoRA | 看情况 |
 
-git clone https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3
-git clone https://github.com/ZenHG/ComfyUI-H3-Latent-Relay
-git clone https://github.com/kijai/ComfyUI-KJNodes
-git clone https://github.com/1038lab/ComfyUI-RMBG
-git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation
+### 6.4 只用「参考图出片」的话，可以省 21.4 GB
+
+画布主路线是 **用参考图出片**（角色卡 + 场景卡 → 视频），一次装好就能用。
+**「用首帧出片」是另一条路**（先出一张首帧图，再图生视频），它只多用到上表最后那两个文件。
+
+不用这条路的话，解压后先把这两个删掉再跑 `一键部署.bat`（它只复制还在的文件）：
+
+```
+models\diffusion_models\minimax_h3_fl2va_pruned_int8_convrot.safetensors     19.53 GB
+models\loras\minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors        1.82 GB
 ```
 
-**没有 git？** 打开上面每个仓库页面 → `Code` → `Download ZIP` → 解压到 `custom_nodes\`。
-解压后**别套两层目录**：正确是 `custom_nodes\ComfyUI-RMBG\__init__.py`，不是 `custom_nodes\ComfyUI-RMBG\ComfyUI-RMBG\__init__.py`。
+同理，不要「去人」「补帧」的，可以把 `custom_nodes\ComfyUI-RMBG\` 和
+`custom_nodes\comfyui-frame-interpolation\` 两个目录删掉再部署。
 
-**装完必须重启 ComfyUI**，否则节点不会加载。
+> 顺带一句：`fl2va` 这条链没有低显存档版本，**显存不到 12 GB 时画布会把「用首帧出片」直接禁用**，
+> 装了大模型也跑不动，轻量包用户可以连同这两个一起删。
 
-> 已经装了 ComfyUI-Manager 的话，也可以直接在工作流里点「Install Missing Custom Nodes」，效果一样。
->
-> **文件夹在、但体检说节点缺**：说明 ComfyUI 启动时没加载成功（多半是这个包的 Python 依赖没装）。
-> 去看 ComfyUI 启动日志里的 import 报错，在那个包的目录里 `pip install -r requirements.txt`；不是没装，别重复 clone。
+### 6.5 组件包里没有的：Qwen-Image-Edit「改图三件套」（可选）
 
-### 5.1 还要装：SageAttention（出片快约 55%）
-
-出片默认开 SageAttention 加速，需要 **ComfyUI 的 Python** 里有 `sageattention` 包。
-注意它**不是** custom_nodes，`git clone` 装不上——它是 pip 包，要按 ComfyUI 那套 torch / CUDA 版本装。
-
-- **最省事**：画布里「设置 → 体检」，这一项红了就点旁边的「安装 / 重装」——它会用 ComfyUI 自己的 pip 装
-  （装不上会自动 `--force-reinstall`；如果是缺 `triton`，会自动改装 `triton-windows`），装完自动复查。
-- **手动**（体检里会显示 ComfyUI 用的那个解释器路径）：
-
-```bat
-"<ComfyUI 的 python.exe>" -m pip install sageattention
-:: Windows 上 sageattention 还依赖 triton，要用 triton-windows（不是 triton）
-"<ComfyUI 的 python.exe>" -m pip install triton-windows
-```
-
-版本对不上（编译报错）时先别硬装，画布会自动摘掉加速节点，照样能出片，只是慢一倍；
-也可以在右侧面板把「SageAttention 加速」设成「关」。
-
-**RMBG 的模型**：第一次用「去人」时它会自动下载 `BiRefNet-portrait`（约 844 MB）到
-`ComfyUI\models\RMBG\BiRefNet\`。国内网络下不动就手动下：
-<https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet-portrait.safetensors>
-（镜像：<https://hf-mirror.com/1038lab/BiRefNet/resolve/main/BiRefNet-portrait.safetensors>）
-连同同仓库的 `birefnet.py`、`BiRefNet_config.py`、`config.json` 一起放进那个目录。
-
----
-
-## 7. 第 6 步：下载模型（必需 8 个，可选 4 项）
-
-**目录规则**：全部放进 `ComfyUI\models\<子目录>\`，子目录名必须一模一样（加载器只认这几个名字）。
-
-**下载方法**：点链接直接下；国内连不上就把域名 `huggingface.co` 换成 `hf-mirror.com`。
-文件很大（单个最大 19.5 GB），建议用 IDM / aria2 / 迅雷多线程。
-
-### 7.1 出片链路（MiniMax H3，参考图生视频）——必需 5 个
-
-| 文件 | 大小 | 放到 | 下载 |
-|---|---|---|---|
-| `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 19.53 GB | `models\diffusion_models\` | [HF](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors) |
-| `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors` | 1.82 GB | `models\loras\` | [HF](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors) · [镜像](https://hf-mirror.com/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors) |
-| `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | 14.61 GB | `models\text_encoders\` | [HF](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors) |
-| `minimax_h3_video_vae_int8_convrot.safetensors` | 2.62 GB | `models\vae\` | [HF](https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors) · [镜像](https://hf-mirror.com/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors) |
-| `minimax_h3_audio_vae_fp32.safetensors` | 0.56 GB | `models\vae\` | [HF](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors) |
-
-### 7.2 生图链路（Krea2，首帧 / 角色设定图 / 场景空镜）——必需 3 个
-
-| 文件 | 大小 | 放到 | 下载 |
-|---|---|---|---|
-| `krea2_turbo_fp8_scaled.safetensors` | 12.24 GB | `models\diffusion_models\` | [HF](https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors) |
-| `qwen3vl_4b_fp8_scaled.safetensors` | 4.88 GB | `models\text_encoders\` | [HF](https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors) |
-| `qwen_image_vae.safetensors` | 0.24 GB | `models\vae\` | [HF](https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors) |
-
-### 7.3 可选：改图链路（Qwen-Image-Edit 2511，多角度三视图 / 场景去人）——4 个，约 28.9 GB
-
-**这一组不是必需的，主流程（角色卡、场景空镜、首帧、出片）一行都用不到。** 只在你想用
-「生成多角度」「生成组（表情/服装/道具）」「把场景参考里的人去掉」这三个按钮时才需要。
-
-不装也能正常用画布：体检不会因为缺它们而拦你进画布，相关按钮会直接不显示。
-等哪天要用那段功能，再回来补下载即可。
+「生成组（表情 / 服装 / 道具）」「把场景参考里的人去掉」这两个按钮用到的是 Qwen-Image-Edit 2511，
+**不在组件包里**，不装也不影响主流程（相关按钮会自动不显示）。想用再自己下：
 
 | 文件 | 大小 | 放到 | 下载 |
 |---|---|---|---|
@@ -238,19 +235,34 @@ git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation
 | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` | 0.79 GB | `models\loras\` | [HF](https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors) · [镜像](https://hf-mirror.com/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors) |
 | `qwen-image-edit-2511-multiple-angles-lora.safetensors` | 0.28 GB | `models\loras\` | [HF](https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA/resolve/main/qwen-image-edit-2511-multiple-angles-lora.safetensors) · [镜像](https://hf-mirror.com/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA/resolve/main/qwen-image-edit-2511-multiple-angles-lora.safetensors) |
 
-> `qwen_image_vae.safetensors` 在 7.2 已经下过一次，7.3 的 VAE 就是它，不用重复下载。
+> `qwen_image_vae.safetensors` 组件包里已经有了，不用重复下。
 
-### 7.4 可选：图生视频路线（fl2va）
+### 6.6 SageAttention（可选，出片快约 55%）
 
-画布主路线是 **ref2va（参考图生成）**，上面 8 个必需的够了（可选那 4 项是「多角度 / 去人」用的）。
-如果你还要走「图生视频」（首帧图驱动），再补这 2 个：
+出片默认开 SageAttention 加速，需要 **ComfyUI 的 Python** 里有 `sageattention` 包。
+它**不是**节点包，`git clone` 装不上——是 pip 包，要按 ComfyUI 那套 torch / CUDA 版本装。
 
-| 文件 | 大小 | 放到 | 下载 |
-|---|---|---|---|
-| `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 19.53 GB | `models\diffusion_models\` | [HF](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors) · [镜像](https://hf-mirror.com/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors) |
-| `minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors` | 1.82 GB | `models\loras\` | [HF](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors) · [镜像](https://hf-mirror.com/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors) |
+- **最省事**：画布里「设置 → 体检」，这一项红了就点旁边的「安装 / 重装」——它用 ComfyUI 自己的 pip 装
+  （装不上会自动 `--force-reinstall`；缺 `triton` 时自动改装 `triton-windows`），装完自动复查。
+- **手动**（体检里会显示 ComfyUI 用的那个解释器路径）：
 
-### 7.5 模型想放别的盘（比如 D 盘只剩空间）
+```bat
+"<ComfyUI 的 python.exe>" -m pip install sageattention
+"<ComfyUI 的 python.exe>" -m pip install triton-windows
+```
+
+版本对不上（编译报错）时别硬装：画布会自动摘掉加速节点，照样能出片，只是慢一倍；
+也可以在右侧面板把「SageAttention 加速」设成「关」。
+
+### 6.7 RMBG 的模型（用「去人」才需要）
+
+第一次用「去人」时它会自动下载 `BiRefNet-portrait`（约 844 MB）到 `ComfyUI\models\RMBG\BiRefNet\`。
+国内网络下不动就手动下：
+<https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet-portrait.safetensors>
+（镜像：<https://hf-mirror.com/1038lab/BiRefNet/resolve/main/BiRefNet-portrait.safetensors>）
+连同同仓库的 `birefnet.py`、`BiRefNet_config.py`、`config.json` 一起放进那个目录。
+
+### 6.8 模型想放别的盘（比如 D 盘只剩空间）
 
 ComfyUI 支持 `extra_model_paths.yaml`：把模型放任意位置，再让 ComfyUI 挂进来。
 
@@ -270,6 +282,7 @@ comfyui:
 ```
 
 > 这份文件不需要手写完整版：ComfyUI 装的目录里通常有个 `extra_model_paths.yaml.example`，复制改名再改路径即可。改完重启 ComfyUI。
+> 组件包的部署脚本会读这个文件，模型已经在别的盘就不会重复复制。
 
 ---
 
@@ -360,7 +373,7 @@ out\canvas.log          ← 画布后端日志（报错都在这）
 - 或者端口被别的程序占了：`netstat -ano | findstr :8766`，改用 `--port 8770`。
 
 **Q5：模型放 D 盘，体检说找不到**
-→ 第 7.5 节，用 `extra_model_paths.yaml` 挂进来；或者把模型挪回 `ComfyUI\models\` 对应子目录。
+→ 第 6.8 节，用 `extra_model_paths.yaml` 挂进来；或者把模型挪回 `ComfyUI\models\` 对应子目录。
 
 **Q6：改了 `canvas\server.py` 不生效**
 → 画布要**关掉再启动**：`关闭画布.bat` → `启动画布.bat`。
@@ -372,7 +385,7 @@ out\canvas.log          ← 画布后端日志（报错都在这）
 - 关掉别的占显存的程序。
 
 **Q8：ComfyUI 里报缺 `PathchSageAttentionKJ` 但不影响出片**
-→ 那是 kjnodes 的 SageAttention 加速节点，缺了会自动退回 SDPA，只是慢一点。想快就装第 5 步里的 `ComfyUI-KJNodes`。
+→ 那是 kjnodes 的 SageAttention 加速节点，缺了会自动退回 SDPA，只是慢一点。想快就装第 6 步组件包里的 `comfyui-kjnodes`（默认已经带了）。
 
 ---
 
@@ -449,7 +462,7 @@ GuoBaoCanvas\
 ## 13. 已知限制
 
 - 只有 Windows 启动脚本；其它系统需要自己 `python canvas/server.py --port 8766`。
-- 画布主路线是 **ref2va（参考图生成）**；`fl2va` 图生视频要额外 2 个权重（见 7.4）。
+- 画布主路线是 **ref2va（参考图生成）**；`fl2va` 图生视频要额外 2 个权重（见 6.3 表里标「看情况」的两行）。
 - 画布**不提交 GPU 任务时不会占用显卡**；真正出片是 ComfyUI 在跑，关画布不会中断已提交的任务，要停得去 ComfyUI 里取消。
 - 模型文件名和默认不同没关系——设置页「高级」里改名字即可。
 
