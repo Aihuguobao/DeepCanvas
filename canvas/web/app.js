@@ -1201,9 +1201,9 @@ function shotPanel(s) {
     <div class="meta" style="margin:-2px 0 8px;color:#8fa3b8">画幅（横屏 / 竖屏）在右上角切，它同时管出片尺寸和空镜比例。</div>
     ${videoTab === 'fl2v' ? '' : videoOnlySettings}
     ${videoTab === 'fl2v' ? '' : `<div class="row">${moveField(engineKey, vid.move)}${shotField(vid.shot)}</div>`}
-    ${videoTab === 'fl2v' ? '' : `<div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    ${videoTab === 'fl2v' ? '' : `<div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>站位 / 相对大小（谁在哪、谁高谁矮）${helpIcon('video.staging')}</span>
-      <button type="button" class="ghost" data-trans="video.staging" style="padding:1px 7px;font-size:11px">译成英文</button></label>
+      <button type="button" class="ghost" data-trans="video.staging" style="padding:1px 7px;font-size:11px">译成英文</button></div>
       <textarea data-role="video.staging">${esc(vid.staging || '')}</textarea>
       <div class="meta">不写也会自动补一句「所有人同底同比例」——防止参考图取景松紧被模型当成真实体型差</div>
       <div class="meta" style="color:#8fa3b8">例：角色1站在画面左侧，角色2站在右侧，两人身高接近，男略高半个头</div></div>`}
@@ -1224,9 +1224,9 @@ function shotPanel(s) {
     ${charRefCount
       ? '<div class="meta" style="margin-bottom:8px">人物：来自角色卡参考图，不用文字描述</div>'
       : field('主体（文字）', img.subject, null, { role: 'image.subject' })}
-    <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>动作（这一格在发生什么）</span>
-      <button type="button" class="ghost" id="btnTrans" style="padding:1px 7px;font-size:11px">译成英文</button></label>
+      <button type="button" class="ghost" id="btnTrans" style="padding:1px 7px;font-size:11px">译成英文</button></div>
       <textarea data-role="image.action">${esc(img.action || '')}</textarea></div>
     ${refSlots.length ? `<div class="chips" style="margin:-4px 0 8px">${
       refSlots.map((r) => `<button class="chip ins" data-insert="@${r.i}" title="把这张图的指代插到动作里">@${r.i} ${esc(r.name)}</button>`).join('')
@@ -1270,27 +1270,27 @@ function shotPanel(s) {
       <div class="meta">勾选上面的角色 / 场景会自动写好，直接用；要补参考图里没有的东西，见
         <a href="/doc/help#2-2-1-细化主体定义" target="_blank" style="color:var(--accent)">帮助文档 · 2.2.1 细化主体定义</a></div>
       <div class="meta" style="color:#8fa3b8">一行一个主体，只写"是谁"，不要复述长相和穿着——外观由参考图负责</div></div>
-    <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>② 这一段发生什么${helpIcon('video.summary')}</span>
-      <button type="button" class="ghost" data-trans="video.summary" style="padding:1px 7px;font-size:11px">译成英文</button></label>
+      <button type="button" class="ghost" data-trans="video.summary" style="padding:1px 7px;font-size:11px">译成英文</button></div>
       <textarea data-role="video.summary">${esc(vid.summary || vid.action || '')}</textarea>
       <div class="meta">写因果：谁先动手、接触点在哪、东西最后落在哪</div>
       <div class="meta" style="color:#8fa3b8">例：角色1把扳手搁在管子上走向角色2，角色2把检查板递过去，两人低头一起看</div></div>
-    <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>③ 哪些东西不能变（可空）${helpIcon('video.retention')}</span>
-      <button type="button" class="ghost" data-trans="video.retention" style="padding:1px 7px;font-size:11px">译成英文</button></label>
+      <button type="button" class="ghost" data-trans="video.retention" style="padding:1px 7px;font-size:11px">译成英文</button></div>
       <textarea data-role="video.retention">${esc(vid.retention || '')}</textarea>
       <div class="meta">每张参考图一行已由后端自动生成（与参考图一致），这里只补额外的</div>
       <div class="meta" style="color:#8fa3b8">例：扳手必须一直是银色那把；角色2的安全帽不能摘</div></div>
-    <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>④ 一个动作一行${helpIcon('beats')}</span>
-      <button type="button" class="ghost" data-trans="beats" style="padding:1px 7px;font-size:11px">逐行译成英文</button></label>
+      <button type="button" class="ghost" data-trans="beats" style="padding:1px 7px;font-size:11px">逐行译成英文</button></div>
       <textarea data-role="beats">${esc((s.beats || []).join('\n'))}</textarea>
       <div class="meta">这些行会按顺序拼进视频提示词</div>
       <div class="meta" style="color:#8fa3b8">例（一行一拍，带先后词）：<br>角色1把扳手搁在铁管上，松了手<br>角色1往前迈两步，走近角色2<br>角色2递过检查板，两人一起低头看</div></div>
-    <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
+    <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>⑤ 环境音（脚步声、球声）${helpIcon('video.soundscape')}</span>
-      <button type="button" class="ghost" data-trans="video.soundscape" style="padding:1px 7px;font-size:11px">译成英文</button></label>
+      <button type="button" class="ghost" data-trans="video.soundscape" style="padding:1px 7px;font-size:11px">译成英文</button></div>
       <textarea data-role="video.soundscape">${esc(vid.soundscape || vid.audio || '')}</textarea>
       <div class="meta" style="color:#8fa3b8">例：滴水声、雨点打在铁皮上、靴子踩过湿钢格栅、两人的呼吸</div></div>
     <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
@@ -1348,7 +1348,7 @@ function shotPanel(s) {
       refBtn.onclick = async () => {
         const old = refBtn.textContent
         refBtn.disabled = true
-        refBtn.textContent = '生成中…（约 2 分钟）'
+        refBtn.textContent = '生成中…'
         say('正在跑 4 视角 + 4 姿势 + 服装条…')
         try {
           const r = await api(`/api/refsheet/${S.ep}/${o.id}`, {
@@ -2039,7 +2039,7 @@ async function genOne(kind, o, view, seed) {
 async function genBundle(kind, o, views, notify) {
   views = views || ['front', 'right', 'back']
   const say = (t) => { setGenStatus(t); if (notify) notify(t) }
-  say(`生成中：${views.length} 个角度一次出，约 1 分钟…`)
+  say(`生成中：${views.length} 个角度一次出…`)
   try {
     const r = await api(`/api/multiview/${S.ep}/${o.id}`, {
       method: 'POST',
@@ -2176,7 +2176,7 @@ function entityPanel(kind, o, fieldDefs, note) {
              <input type="text" id="jobIdBox" placeholder="ComfyUI 任务 ID（粘进来即可）" style="flex:1">
              <button class="ghost" data-act="importjob">导入人设/种子</button>
            </div>
-           <button class="primary" data-act="refsheet" style="width:100%;margin-top:6px">生成拼接参考图（4 视角+4 姿势+服装，约 2 分钟 · 只用文字人设+种子）</button>`
+           <button class="primary" data-act="refsheet" style="width:100%;margin-top:6px">生成拼接参考图（4 视角+4 姿势+服装 · 只用文字人设+种子）</button>`
         : ''}
       <div class="meta" style="word-break:break-all">${o.ref ? esc(shortPath(o.ref)) : '生成前必须先设一张主参考'}</div>
     </div>
@@ -2265,7 +2265,7 @@ function entityPanel(kind, o, fieldDefs, note) {
         btn.disabled = true
         const old = btn.textContent
         btn.textContent = isClean ? '去人中…' : '生成中…'
-        setGenStatus(isClean ? '把主参考里的人擦掉，约 40 秒' : '造空镜，约 30 秒')
+        setGenStatus(isClean ? '把主参考里的人擦掉…' : '造空镜…')
         try {
           const r = await api(`/api/scene/${S.ep}/${o.id}/${isClean ? 'clean' : 'plate'}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2319,7 +2319,7 @@ function entityPanel(kind, o, fieldDefs, note) {
         // 画风也从下拉现读：别指望 onchange 一定先于这次点击落盘
         const styleSel2 = insp.querySelector('[data-entity-pick="style"]')
         const style = styleSel2 ? styleSel2.value : ''
-        setGenStatus(seed ? `文字生主参考图：约 40 秒（种子 ${seed}）` : '文字生主参考图：约 40 秒（种子随机）')
+        setGenStatus(seed ? `文字生主参考图（种子 ${seed}）` : '文字生主参考图（种子随机）')
         try {
           const r = await api(`/api/character/${S.ep}/${o.id}/textref`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2351,7 +2351,7 @@ function entityPanel(kind, o, fieldDefs, note) {
         btn.disabled = true
         const old = btn.textContent
         btn.textContent = '生成中…'
-        setGenStatus(`生成 ${grp}：一次提交出整组，约 1 分钟`)
+        setGenStatus(`生成 ${grp}：一次提交出整组`)
         try {
           const r = await api(`/api/sheetgen/${S.ep}/${o.id}/${grp}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2412,7 +2412,7 @@ function entityPanel(kind, o, fieldDefs, note) {
       if (btn.dataset.act === 'refsheet') {
         const old = btn.textContent
         btn.disabled = true
-        btn.textContent = '生成中…（约 2 分钟）'
+        btn.textContent = '生成中…'
         setGenStatus('正在跑 4 视角 + 4 姿势 + 服装条…')
         try {
           const r = await api(`/api/refsheet/${S.ep}/${o.id}`, {
@@ -2806,6 +2806,8 @@ function openCreate(kind) {
   $('genStatus').textContent = ''
   $('genPreview').style.display = 'none'
   $('genConfirm').disabled = true
+  $('genGoSheet').style.display = kind === 'character' ? '' : 'none'
+  $('genGoSheet').disabled = false
   $('genModal').classList.remove('hidden')
   $('genName').focus()
 }
@@ -2838,7 +2840,7 @@ async function createEmptyCard() {
 
 // 生成图并挂成这张卡的主参考（第一次建卡；之后「再来一张」复用同一张卡）
 // 只生成图，不建卡；满意后点「确认」才把这张挂成该卡的主参考。
-async function generateForCard() {
+async function generateForCard(mode = 'single') {
   const name = $('genName').value.trim()
   if (!name) { $('genStatus').textContent = '先给个名字'; $('genName').focus(); return }
   const text = $('genText').value.trim()
@@ -2858,27 +2860,31 @@ async function generateForCard() {
   }
   const t0 = Date.now()
   $('genGo').disabled = true
+  $('genGoSheet').disabled = true
   $('genSkip').disabled = true
   $('genConfirm').disabled = true
-  $('genStatus').textContent = '已提交，正在生成…（队列前面还有任务时会等）'
+  $('genStatus').textContent = mode === 'sheet'
+    ? '已提交：四视角图（慢），一张出四个角度，正在生成…'
+    : '已提交：单图（快），正在生成…'
   try {
     const g = await api('/api/gen/' + GEN_ENDPOINT[genKind], {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       // ep 必须带上：服务端按项目的横竖屏定出图尺寸，不带就只能猜
-      body: JSON.stringify({ text, seed: seed || 0, style, ep: S.ep }),
+      body: JSON.stringify({ text, seed: seed || 0, style, ep: S.ep, mode }),
     })
     genLast = g
     const secs = ((Date.now() - t0) / 1000).toFixed(0)
     $('genImg').src = g.url + '&t=' + Date.now()
     $('genPreview').style.display = 'block'
     $('genPath').textContent = '路径：' + g.path
-    $('genStatus').textContent = `已生成 · 用时 ${secs} 秒 · 画风 ${g.style_zh || g.style} · 种子 ${g.seed} —— 满意就点下面「确认」`
+    $('genStatus').textContent = `已生成${mode === 'sheet' ? '（四视角图）' : '（单图）'} · 用时 ${secs} 秒 · 画风 ${g.style_zh || g.style} · 种子 ${g.seed} —— 满意就点下面「确认」`
     $('genSeedNote').textContent = `上一次用的种子：${g.seed}（填回上面的框就能复现）`
     $('genConfirm').disabled = false
   } catch (e) {
     $('genStatus').textContent = '✗ ' + String(e.message).slice(0, 200)
   } finally {
     $('genGo').disabled = false
+    $('genGoSheet').disabled = false
     $('genSkip').disabled = false
   }
 }
@@ -2933,7 +2939,8 @@ $('genStyle').onchange = async () => {
   } catch (e) { /* 忽略 */ }
 }
 $('genClose').onclick = () => $('genModal').classList.add('hidden')
-$('genGo').onclick = generateForCard
+$('genGo').onclick = () => generateForCard('single')
+$('genGoSheet').onclick = () => generateForCard('sheet')
 $('genConfirm').onclick = confirmCard
 $('genSkip').onclick = createEmptyCard
 $('genSeedRand').onclick = () => {

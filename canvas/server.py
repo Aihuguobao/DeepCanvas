@@ -1013,9 +1013,8 @@ OPTIONAL_MODELS = {
 }
 
 
-# 低配档只剩 W4A8 一条。GGUF 那条路已废弃：ComfyUI-GGUF 至今不支持 MiniMax H3
-# （city96/ComfyUI-GGUF issue #471 未关闭），装上也只会在提交时报 Unknown model architecture。
-# 8 GB 显存方案：主模型换 W4A8、文本编码器换 4B + ClipProj 投影。
+# 低配档只剩 W4A8 一条：主模型换 W4A8、文本编码器换 4B + ClipProj 投影。
+# 8 GB 显存方案（社区验证）。
 # 来源：github.com/reventadirecta/MiniMax-H3-ComfyUI-8GB-VRAM（RTX 4060 Laptop 8GB + 16GB RAM）
 LOWVRAM_DOC = [
     ("w4a8_unet", "diffusion_models", "H3 ref2va W4A8 主模型（约 11.7 GiB，原版 int8 是 19.5 GiB）",
@@ -1033,10 +1032,6 @@ LOWVRAM_NOTE = {
     "tested": "8 GB 显存 + 32 GB 内存笔记本；社区参考：RTX 4060 Laptop 8GB + 16GB 内存",
     "runtime": "5 秒片约 7 分钟（608×352、20 步、--lowvram --fp16-vae）",
 }
-
-# 文本编码器不列在 GGUF 档里：GGUF 版走 llama.cpp 加载器，Qwen3-VL 会被判
-# "incompatible with llama.cpp"，所以编码器继续用标准档那个。
-
 
 def _hf_urls(repo: str, path: str) -> dict:
     """一个 HF 文件的官方 + 镜像下载地址。国内直连 HF 经常超时，镜像兜底。"""
@@ -2016,6 +2011,15 @@ GEN_KINDS = {
 }
 
 
+def _has_lora(name: str) -> bool:
+    """ComfyUI 的 lora 清单里有没有这个文件。查不到就当没有，别让用户提交后才看到报错。"""
+    try:
+        info = comfy.object_info("LoraLoaderModelOnly")
+        return name in (info["LoraLoaderModelOnly"]["input"]["required"]["lora_name"][0] or [])
+    except Exception:  # noqa: BLE001 - 离线/接口异常都按"没有"处理
+        return False
+
+
 @app.get("/api/gen/info")
 def gen_info():
     """素材生成面板要显示的东西：每个 kind 的默认画风 + 可选画风清单。
@@ -2055,18 +2059,33 @@ def gen_asset(kind: str, body: dict):
     # 否则用户选了「写实照片」也可能拿到一张动画片。
     prompt = " ".join([prompts.render_text(style), _sentence(text), meta["tail"]])
     seed = int((body or {}).get("seed") or 0) or int(time.time()) % 1_000_000_007
-    graph = graphs.krea2(prompt, seed=seed, prefix=f"canvas/gen/{kind}",
-                         width=w, height=h)
+    if (body or {}).get("mode") == "sheet":
+        # 四视角参考表（脸特写 + 正 + 侧 + 背）：一条图跑完，前半段文生图出正面图，
+        # 后半段拿它当 source_latent 出四格，中间图不落盘。
+        # 四格是一笔画出来的，衣服/污渍/配件在四个视角天然一致。
+        if not _has_lora(multiview.QUADVIEW_LORA):
+            raise HTTPException(
+                status_code=400,
+                detail="缺四视角 LoRA：QuadView_krea2_v1.safetensors → models\\loras（见 README 第 7 步）")
+        sheet_prompt = f"{_sentence(text)} {multiview.QUADVIEW_TRIGGER}"
+        graph = multiview.build_quadview_from_text(
+            prompt, sheet_prompt, seed=seed, width=w, height=h,
+            prefix=f"canvas/sheet/{store.slug(ep)}")
+    else:
+        graph = graphs.krea2(prompt, seed=seed, prefix=f"canvas/gen/{kind}",
+                             width=w, height=h)
     name = f"素材{meta['label']}"
     pid = comfy.submit(graph, name)
     hist = comfy.wait(pid, name, timeout=1800)
     files = comfy.produced(hist, ("images",))
     if not files:
         raise HTTPException(status_code=500, detail="没出图（看 ComfyUI 控制台）")
-    src = comfy.local_path(files[0])
+    src = comfy.local_path(files[-1])
+    # 四视角表固定 1536x1024（LoRA 的版式尺寸），和项目横竖屏无关；其余素材按项目尺寸走。
+    out_size = [1536, 1024] if (body or {}).get("mode") == "sheet" else [w, h]
     return {"ok": True, "kind": kind, "path": src,
             "url": "/api/file?path=" + quote(src), "prompt": prompt,
-            "seed": seed, "size": [w, h], "style": style,
+            "seed": seed, "size": out_size, "style": style,
             "style_zh": prompts.style_label(style)}
 
 

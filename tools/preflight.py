@@ -98,8 +98,7 @@ def _check(graph: dict, oi: dict) -> list[str]:
     for nid, node in graph.items():
         ct = node.get("class_type", "")
         if ct not in oi:
-            hint = "" if "GGUF" not in ct else "（低配档已改成只走 W4A8，不再用 GGUF 加载器）"
-            errs.append(f"[{nid}] 未知节点类型 {ct}{hint or '（没装/没加载）'}")
+            errs.append(f"[{nid}] 未知节点类型 {ct}（没装/没加载）")
             continue
         inputs = node.get("inputs") or {}
         for name, spec in _spec_list(oi, ct):
@@ -132,10 +131,7 @@ def _check(graph: dict, oi: dict) -> list[str]:
                         print(f"  ! [{nid}] {ct}.{name} = {val!r} 不在 ComfyUI 列表里，"
                               f"但文件确实在 input —— 放行（列表可能是缓存）")
                     else:
-                        hint = ""
-                        if "GGUF" in ct:
-                            hint = "（低配档已改成只走 W4A8，GGUF 那条路废弃了）"
-                        errs.append(f"[{nid}] {ct}.{name} = {val!r} 不在可选列表里{hint}")
+                        errs.append(f"[{nid}] {ct}.{name} = {val!r} 不在可选列表里")
             elif t in ("INT", "FLOAT") and isinstance(val, (int, float)):
                 lo = spec[1].get("min") if len(spec) > 1 and isinstance(spec[1], dict) else None
                 hi = spec[1].get("max") if len(spec) > 1 and isinstance(spec[1], dict) else None

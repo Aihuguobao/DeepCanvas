@@ -46,7 +46,7 @@ DEFAULT_MODELS = {
     "h3_video_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
     "h3_audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
     # 8 GB 低显存方案（社区实测）：W4A8 主模型 + 4B 编码器 + ClipProj 矩阵。
-    # 低配档只走这一条；GGUF 那条路已废弃（ComfyUI-GGUF 至今不支持 MiniMax H3）。
+    # 低配档只走这一条。
     "w4a8_unet": "minimax_h3_ref2va_pruned_w4a8_mixed.safetensors",
     "w4a8_clip": "qwen3vl_4b_int8_convrot.safetensors",
     "w4a8_proj": "mmh3-4b-ClipProj-v3-mlp.safetensors",

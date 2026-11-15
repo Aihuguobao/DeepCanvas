@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from . import settings
+
 AZIMUTH = {
     "front": "front view",
     "front_right": "front-right quarter view",
@@ -162,4 +164,84 @@ def build(ref_filename: str, prompts: list[tuple[str, str]], *, seed: int = 0,
         g[save] = {"class_type": "SaveImage",
                    "inputs": {"images": [scale, 0],
                               "filename_prefix": f"{prefix}/{save_prefix or ''}{i:02d}_{label}"}}
+    return g
+
+
+# ---------------------------------------------------------------- 四视角参考表（sheet）
+
+# 这个 LoRA 把一张参考图转成「脸特写 + 正面 + 侧面 + 背面」四格参考表。
+# 触发句是它训练时的固定句式，删了就不出四格布局。
+QUADVIEW_LORA = "QuadView_krea2_v1.safetensors"
+QUADVIEW_TRIGGER = ("Convert the character in the image to a Character Sheet showing a face close-up, "
+                    "front full body, side full body and back full body views")
+
+
+def build_quadview_from_text(front_prompt: str, sheet_prompt: str, *, seed: int = 0,
+                             unet: str = "", width: int = 1088, height: int = 1920,
+                             steps: int = 8, sheet_steps: int = 10, ref_boost: float = 1.0,
+                             prefix: str = "canvas/sheet/from_text") -> dict:
+    """一次提交出整张四格表：前半段文生图，后半段用它自己的输出当 source_latent。
+
+    整条链在一个图里，中间图不落盘、不返回，只有最后一张四格保存：
+
+        UNET ─┬─ 文生图 ─ VAEDecode → ImageScale → VAEEncode → source_latent
+              └─ QuadView LoRA → Krea2EditModelPatch → 采样 → 四格
+
+    两段提示词分开编码（都从同一份人设拼出来）：第一段是「画风句 + 人设 + 构图尾巴」，
+    第二段是「人设 + 四格触发句」。不共用一个文本节点，是因为把四格触发句塞进第一段
+    会把正面图往拼版方向带，第一步就画歪。
+    """
+    unet = unet or settings.model("krea2_unet")
+    g: dict = {
+        "1": {"class_type": "UNETLoader",
+              "inputs": {"unet_name": unet, "weight_dtype": "default"}},
+        "2": {"class_type": "LoraLoaderModelOnly",
+              "inputs": {"model": ["1", 0], "lora_name": QUADVIEW_LORA, "strength_model": 1.0}},
+        "3": {"class_type": "CLIPLoader",
+              "inputs": {"clip_name": settings.model("krea2_clip"), "type": "krea2",
+                         "device": "default"}},
+        "4": {"class_type": "VAELoader",
+              "inputs": {"vae_name": settings.model("krea2_vae")}},
+
+        # ---- 前半段：文生图出正面图（不保存）
+        "20": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["3", 0], "text": front_prompt}},
+        "21": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["20", 0]}},
+        "22": {"class_type": "EmptyLatentImage",
+               "inputs": {"width": int(width), "height": int(height), "batch_size": 1}},
+        "23": {"class_type": "KSamplerAdvanced",
+               "inputs": {"model": ["1", 0], "positive": ["20", 0], "negative": ["21", 0],
+                          "latent_image": ["22", 0], "add_noise": "enable",
+                          "noise_seed": int(seed), "steps": int(steps), "cfg": 1.0,
+                          "sampler_name": "euler_ancestral", "scheduler": "beta",
+                          "start_at_step": 0, "end_at_step": int(steps),
+                          "return_with_leftover_noise": "disable"}},
+        "24": {"class_type": "VAEDecode", "inputs": {"samples": ["23", 0], "vae": ["4", 0]}},
+
+        # ---- 后半段：拿前半段的图当 source_latent，出四格
+        "30": {"class_type": "ImageScale",
+               "inputs": {"image": ["24", 0], "upscale_method": "lanczos",
+                          "width": 1024, "height": 1024, "crop": "center"}},
+        "31": {"class_type": "VAEEncode", "inputs": {"pixels": ["30", 0], "vae": ["4", 0]}},
+        "32": {"class_type": "Krea2EditModelPatch",
+               "inputs": {"model": ["2", 0], "source_latent": ["31", 0],
+                          "source_image": ["30", 0], "vae": ["4", 0],
+                          "ref_boost": float(ref_boost), "fit_mode": "fit",
+                          "ref_position": "aligned (trained)"}},
+        "33": {"class_type": "Krea2EditGroundedEncode",
+               "inputs": {"clip": ["3", 0], "prompt": sheet_prompt, "image": ["30", 0],
+                          "grounding_px": 768}},
+        "34": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["3", 0], "text": ""}},
+        "35": {"class_type": "EmptySD3LatentImage",
+               "inputs": {"width": 1536, "height": 1024, "batch_size": 1}},
+        "36": {"class_type": "KSamplerAdvanced",
+               "inputs": {"model": ["32", 0], "positive": ["33", 0], "negative": ["34", 0],
+                          "latent_image": ["35", 0], "add_noise": "enable",
+                          "noise_seed": int(seed) + 1, "steps": int(sheet_steps), "cfg": 1.0,
+                          "sampler_name": "euler", "scheduler": "simple",
+                          "start_at_step": 0, "end_at_step": int(sheet_steps),
+                          "return_with_leftover_noise": "disable"}},
+        "37": {"class_type": "VAEDecode", "inputs": {"samples": ["36", 0], "vae": ["4", 0]}},
+        "38": {"class_type": "SaveImage",
+               "inputs": {"images": ["37", 0], "filename_prefix": prefix}},
+    }
     return g
