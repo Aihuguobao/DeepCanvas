@@ -1,0 +1,6 @@
+{
+  "id": "pixel",
+  "zh": "像素风",
+  "render": "Pixel art, limited palette, visible square pixels, dithering in the gradients, sprite-like.",
+  "note": "像素风。方块像素、颜色数量少，渐变用抖动表现。"
+}

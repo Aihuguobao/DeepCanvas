@@ -1,0 +1,6 @@
+{
+  "id": "cgphoto",
+  "zh": "人物跟人物图 · 背景跟背景图",
+  "render": "Keep the character rendered in the exact art style of Image 1, with its linework, colour treatment and level of detail preserved; keep the environment rendered in the exact look of Image 2, with its own lighting, materials and depth of field. The two rendering styles stay side by side in the same frame.",
+  "note": "两套风格各管各的：人物按角色参考图的画风，背景按场景参考图的画风。黑白角色配写实场景、CG 人物配实拍场景都靠这条，不用为每种组合再建一条画风。"
+}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>短剧画布</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/style.css">
+<script>
+  // 出错时把信息写到提示条，别让页面只剩一个空壳
+  window.addEventListener('error', (e) => {
+    const el = document.getElementById('hint')
+    if (el) el.textContent = 'JS 错误：' + (e.message || '') + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno
+  })
+</script>
+</head>
+<body>
+<header id="bar">
+  <div class="brand">短剧画布</div>
+  <select id="epSelect"></select>
+  <div id="stat" class="stat"></div>
+  <div class="spacer"></div>
+  <select id="projOri" title="画面比例（横屏 / 竖屏）：同时影响出片尺寸和场景空镜比例，改完下一镜生效" style="width:auto;min-width:104px">
+    <option value="portrait">竖屏 9:16</option>
+    <option value="landscape">横屏 16:9</option>
+  </select>
+  <button id="newEpBtn" class="ghost">新建集</button>
+  <button id="newShotBtn" class="ghost">新建镜头</button>
+  <button id="fitBtn" class="ghost">适配视图</button>
+  <button id="tidyBtn" class="ghost" title="按一列 5 个重新排列镜头（会清掉手动拖动的位置）">整理画布</button>
+  <a id="refBtn" class="ghost" href="/doc/help" target="_blank"
+     title="图片 / 视频提示词写法、模板样例、常见翻车对照"
+     style="text-decoration:none;display:inline-flex;align-items:center;color:#cfe0ef">帮助</a>
+  <button id="setBtn" class="ghost">设置</button>
+</header>
+<div id="toast" class="toast hidden"></div>
+
+<main>
+  <aside id="assets">
+    <div class="group-title">角色</div>
+    <div id="charList" class="asset-list"></div>
+    <div class="group-title">场景</div>
+    <div id="sceneList" class="asset-list"></div>
+    <div class="group-title">道具</div>
+    <div id="propList" class="asset-list"></div>
+  </aside>
+
+    <span id="cbarText">空闲</span>
+</div>
+<section id="viewport">
+    <div id="world">
+      <svg id="edges"></svg>
+      <div id="nodes"></div>
+    </div>
+        <div id="hint" class="hint">滚轮缩放 · 左键拖动空白处平移 · 拖动节点改位置 · 点节点改属性</div>
+  </section>
+
+  <div id="inspResize" title="拖动调整面板宽度"></div>
+  <aside id="inspector"><div class="empty">选中一个节点</div></aside>
+</main>
+<div id="tip" class="tip hidden"></div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><span id="modalTitle"></span><button id="modalClose" class="ghost">关闭</button></div>
+    <pre id="modalBody"></pre>
+    <div id="modalFoot" class="meta"></div>
+  </div>
+</div>
+
+<div id="setModal" class="modal hidden">
+  <div class="modal-box" style="width:min(660px,94vw);max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-head"><span>设置</span><button id="setClose" class="ghost">关闭</button></div>
+    <div style="padding:14px;overflow:auto;flex:1;min-height:0">
+
+      <div class="note" style="margin-bottom:8px">ComfyUI（本机路径，不上传）</div>
+      <div class="field"><label>ComfyUI 文件夹</label>
+        <div class="row">
+          <input type="text" id="setRoot" placeholder="留空 = 自动探测" style="flex:1;min-width:0">
+          <button class="ghost" id="setPick" style="flex:none;white-space:nowrap">浏览…</button>
+        </div>
+        <div class="note" style="margin-top:4px">选 ComfyUI 那一层（里面有 models\ 和 input\ 的目录）。</div>
+      </div>
+      <div class="field"><label>ComfyUI 地址</label>
+        <input type="text" id="setUrl" placeholder="http://127.0.0.1:8188"></div>
+      <div class="row" style="margin:8px 0;align-items:center">
+        <button class="ghost" id="setCheck" style="flex:none;white-space:nowrap">体检</button>
+        <label class="meta" style="flex:none;display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer" title="跳过自动探测，假装这是台全新机器">
+          <input type="checkbox" id="setSimFree"> 模拟未配置
+        </label>
+        <span id="envStatus" class="meta" style="flex:1;min-width:0">点一下看缺什么</span>
+      </div>
+      <div id="envReport" style="margin-top:6px"></div>
+
+      <details id="setModelsBox" style="margin-top:12px">
+        <summary class="meta" style="cursor:pointer">高级 · 改模型文件名（装的名字不一样才用）</summary>
+        <div id="setModels" style="margin-top:8px"></div>
+      </details>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+
+      <div class="note" style="margin-bottom:8px">LLM 翻译（不填也能用，只是中文描述不会自动翻英文）</div>
+      <div class="field"><label>接口地址（OpenAI 兼容）</label>
+        <input type="text" id="setBase" placeholder="https://api.deepseek.com/v1"></div>
+      <div class="field"><label>API Key</label>
+        <input type="password" id="setKey" placeholder="留空表示不改动已保存的密钥"></div>
+      <div class="field"><label>模型名</label>
+        <input type="text" id="setModel" placeholder="deepseek-chat"></div>
+
+      <button class="primary" id="setSave" style="width:100%;margin-top:10px">保存</button>
+      <div id="setStatus" class="meta" style="margin-top:10px"></div>
+      <div class="note">全部只存在本机 _agent\settings.json，不会上传到别处。</div>
+    </div>
+  </div>
+</div>
+
+<div id="genModal" class="modal hidden">
+  <div class="modal-box" style="width:min(620px,92vw);max-height:88vh;overflow:auto">
+    <div class="modal-head"><span id="genTitle">新建角色</span><button id="genClose" class="ghost">关闭</button></div>
+    <div style="padding:14px">
+      <div class="field"><label>名字</label>
+        <input type="text" id="genName" placeholder="例：林小满 / 健身房 / 杠铃"></div>
+      <div class="field"><label>画风</label>
+        <select id="genStyle" title="默认：角色/道具=写实CG，场景=写实照片;可随时换"></select>
+        <div class="note" id="genStyleNote" style="margin-top:4px"></div></div>
+      <div class="field"><label>种子</label>
+        <div class="row" style="gap:8px">
+          <input type="text" id="genSeed" placeholder="留空 = 每次随机" style="flex:1">
+          <button class="ghost" id="genSeedRand" style="flex:none;white-space:nowrap">随机一个</button>
+        </div>
+        <div class="note" id="genSeedNote" style="margin-top:4px">留空或填 0：每次都用新种子；填其他数字：固定用这个种子（同提示词能复现同一张）。</div></div>
+      <div class="field"><label id="genTextLabel">要生成成什么样（中文即可，越具体越好）</label>
+        <textarea id="genText" rows="4" style="width:100%;resize:vertical" placeholder=""></textarea>
+        <div class="note" id="genTextNote" style="margin-top:4px"></div></div>
+      <div class="row" style="gap:8px">
+        <button class="primary" id="genGo" style="flex:1">生成（约 30–60 秒）</button>
+        <button class="ghost" id="genSkip">跳过，先建空卡</button>
+      </div>
+      <div id="genStatus" class="meta" style="margin-top:10px"></div>
+      <div id="genPreview" style="margin-top:10px;display:none">
+        <img id="genImg" style="display:block;max-width:100%;max-height:44vh;width:auto;margin:0 auto;border-radius:8px;border:1px solid var(--line)">
+        <div class="meta" id="genPath" style="margin-top:6px;word-break:break-all"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="genConfirm" style="flex:1" disabled>确认：用这张当主参考</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="askModal" class="modal hidden">
+  <div class="modal-box" style="width:min(760px,94vw);max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-head"><span id="askTitle">确认</span></div>
+    <div style="padding:12px 14px;overflow:auto;flex:1;min-height:0">
+      <pre id="askBody" style="white-space:pre-wrap;word-break:break-word;margin:0;font:12.5px/1.6 ui-monospace,Consolas,monospace"></pre>
+    </div>
+    <div id="askExtra" style="padding:0 14px 10px;display:none;flex-direction:column;gap:6px">
+      <div id="askSecRow" style="display:none;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#9fb3c8">时长</span>
+        <select id="askSeconds" style="width:auto"></select>
+        <span class="meta" style="font-size:11px">帧数必须满足 17k+5；社区节点标注区间 124–362（未核到官方文档），低于 124 也能跑（质量未验证）</span>
+      </div>
+      <div id="askSeedRow" style="display:none;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#9fb3c8">种子</span>
+        <input id="askSeed" type="text" style="width:160px" placeholder="留空 = 每次都不一样">
+        <button type="button" class="ghost" id="askSeedRand" style="padding:1px 9px;font-size:11px">随机一次</button>
+        <span class="meta" style="font-size:11px">想复现同一张，就填上次的号码</span>
+      </div>
+    </div>
+    <div id="askImgWrap" style="display:none;padding:0 14px 10px">
+      <img id="askImg" alt="生成结果" style="max-width:100%;max-height:46vh;display:block;margin:0 auto;border-radius:6px">
+    </div>
+    <div style="padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+      <button class="ghost" id="askNo">取消</button>
+      <button class="ghost" id="askAgain" style="display:none">换一张</button>
+      <button class="primary" id="askYes">开始生成</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

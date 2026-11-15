@@ -1,0 +1,117 @@
+{
+ "599": {
+  "class_type": "KSamplerAdvanced",
+  "inputs": {
+   "model": [
+    "761",
+    0
+   ],
+   "positive": [
+    "627",
+    0
+   ],
+   "negative": [
+    "763",
+    0
+   ],
+   "latent_image": [
+    "698",
+    0
+   ],
+   "add_noise": "enable",
+   "noise_seed": 20261021,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "euler_ancestral",
+   "scheduler": "beta",
+   "start_at_step": 0,
+   "end_at_step": 8,
+   "return_with_leftover_noise": "enable"
+  }
+ },
+ "627": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "755",
+    0
+   ],
+   "text": "low angle from ground level looking steeply up. A gargoyle kneels in the blizzard, huge, stone chest filling the sky. Its knees crush two deep pits into the snow. A black sword stays strapped across its back, unbroken snow on the hilt. Its tail drags a trench, coils, sweeps low. One wing lifts and slams the snow flat. Twenty paces out, the exorcist stands in a brown robe, hair wet and stuck to his face. Snow reaches his shins. His longsword points down, tip in the white. He plants one boot back, shifts weight, and drives forward as the tail whips around, boss encounter, mid-conflict, tension before impact, colossal enemy, size contrast, charging forward, cinematic game CG, physically based rendering, realistic skin and cloth, hard rim light, fine film grain"
+  }
+ },
+ "698": {
+  "class_type": "EmptyLatentImage",
+  "inputs": {
+   "width": [
+    "857",
+    0
+   ],
+   "height": [
+    "857",
+    1
+   ],
+   "batch_size": 1
+  }
+ },
+ "732": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "829",
+    0
+   ],
+   "filename_prefix": "keyframes/DEMO_g01_20261029_184130_idea"
+  }
+ },
+ "755": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+   "type": "krea2",
+   "device": "default"
+  }
+ },
+ "757": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_vae.safetensors"
+  }
+ },
+ "761": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "krea2_turbo_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "763": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "627",
+    0
+   ]
+  }
+ },
+ "829": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "599",
+    0
+   ],
+   "vae": [
+    "757",
+    0
+   ]
+  }
+ },
+ "857": {
+  "class_type": "ResolutionSelector",
+  "inputs": {
+   "aspect_ratio": "9:16 (Portrait Widescreen)",
+   "megapixels": 2.0,
+   "multiple": 32
+  }
+ }
+}

@@ -1,0 +1,15 @@
+# 画布后端依赖。装完就能跑 `python tools/launch_canvas.py`。
+#
+# 括号里是开发机实测版本，下限写得保守一些；你机器上高一点没关系。
+# ComfyUI 自己那套环境通常已经装了 numpy / Pillow / opencv，缺的一般只有
+# fastapi / uvicorn / python-multipart / websockets / imageio-ffmpeg。
+
+fastapi>=0.110          # 实测 0.137.1
+uvicorn>=0.29           # 实测 0.51.0
+pydantic>=2.6           # 实测 2.12.5
+python-multipart>=0.0.9  # 实测 0.0.32（FastAPI 上传文件必需）
+numpy>=1.26             # 实测 2.3.5
+opencv-python>=4.9      # 实测 5.0.0.93（拼图、缩放、抽帧）
+Pillow>=10.0            # 实测 11.3.0（字体、封面）
+websockets>=12.0        # 实测 16.0（连 ComfyUI 的进度推送）
+imageio-ffmpeg>=0.5     # 实测 0.6.0（抽末帧、抽封面）

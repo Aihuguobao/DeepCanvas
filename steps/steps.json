@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "note": "一个步骤 = 一条记录。加功能就加一条 + 一个模块，core 不用动；画布按这里渲染按钮。",
+  "steps": [
+    {
+      "id": "frame",
+      "name": "出首帧",
+      "module": "steps.frame",
+      "requires": [],
+      "produces": "kf",
+      "confirm": true,
+      "engine": "krea2",
+      "hint": "生图只吃画面：谁、多大、在哪、光怎么打"
+    },
+    {
+      "id": "video",
+      "name": "出视频",
+      "module": "steps.video",
+      "requires": ["kf"],
+      "produces": "video",
+      "confirm": true,
+      "engine": "h3ref|h3",
+      "hint": "视频只吃接下来发生什么；画面细节会被它抢注意力"
+    },
+    {
+      "id": "check",
+      "name": "体检",
+      "module": "steps.check",
+      "requires": ["video"],
+      "produces": null,
+      "confirm": false,
+      "engine": null,
+      "hint": "运动曲线 + 画风漂移，超阈值会点名"
+    },
+    {
+      "id": "stitch",
+      "name": "拼成片",
+      "module": "steps.stitch",
+      "requires": ["video"],
+      "produces": null,
+      "confirm": false,
+      "engine": null,
+      "hint": "按镜头顺序拼接，字幕按镜头时间轴排"
+    }
+  ]
+}

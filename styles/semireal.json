@@ -1,0 +1,6 @@
+{
+  "id": "semireal",
+  "zh": "写实 CG",
+  "render": "photorealistic 3D character render, subsurface scattering skin with visible pores, individual hair strands, physically based materials, cinematic three-point lighting with a soft rim light, filmic tone mapping, real human anatomy",
+  "note": "写实 CG。人物是 3D 渲染的，但材质和皮肤接近真人，不做夸张造型。"
+}
