@@ -391,7 +391,8 @@ function shotNode(s) {
   const dot = runs.length ? 'ok' : ((s.video || {}).summary ? 'pending' : '')
   const beats = (s.beats || []).length
   const lk = String((s.video || {}).link || 'none')
-  const lkZh = lk === 'latent' ? '接续' : '黑场'
+  // 四种衔接方式各写各的，别再把「硬切 / 只打底」都显示成黑场
+  const lkZh = ({ none: '硬切', black: '黑场', latent: '接续', latent_head: '只打底' })[lk] || '硬切'
   // 成片直接放进镜头卡片里（2026-11-04 用户要求：视频别单独飘一个框，排版乱）
   const master = runs.find((r) => r.master) || runs[runs.length - 1]
   let vidBox = ''
@@ -416,8 +417,16 @@ function shotNode(s) {
       <div class="meta" style="margin-top:6px">
         <span class="badge">${s.seconds || 6}s</span>
         <span class="badge">${beats} 拍</span>
-        <span class="badge${lk === 'none' ? '' : ' master'}">${lkZh}</span>
+        <span class="badge master">${lkZh}</span>
         <span class="badge">${runs.length ? runs.length + ' 条成片' : '缺视频'}</span>
+        ${(() => {
+          // 母版是不是补过帧的：状态里记着 interpolated_from，或者文件名带 _48fps
+          const cur = String((s.state || {}).chosen_video || (s.state || {}).video || '')
+          const from = String((s.state || {}).interpolated_from || '')
+          if (!cur || !(/_48fps\b/i.test(cur) || from)) return ''
+          if (from && cur !== from && !/_48fps\b/i.test(cur)) return ''
+          return `<span class="badge interp" title="母版是补帧版：${esc(cur.split(/[\\/]/).pop())}（原片在成片列表里）">已补帧</span>`
+        })()}
       </div>
       ${vidBox}
     </div>`
@@ -1347,6 +1356,7 @@ function shotPanel(s) {
   insp.innerHTML = `
     <h3>${esc(s.id)} · 镜头</h3>
     <button class="ghost" id="btnDelShot" style="color:#e8615a;font-size:11px;padding:2px 8px;margin-bottom:8px">删除这个镜头</button>
+    <button class="ghost" id="btnInterp" style="font-size:11px;padding:2px 8px;margin-bottom:8px" title="把这一镜当前母版补帧到 48fps（纯 CPU，约 2.7 倍实时）">补帧到 48fps</button>
     ${runListHtml(s)}
     <div class="field"><label>这一镜有谁（角色，可多选）</label>
       <div class="chips">${charChips || '<span class="meta">还没有角色卡</span>'}</div></div>
@@ -1739,6 +1749,44 @@ function shotPanel(s) {
       if (ta.onchange) ta.onchange()
     })
   })
+
+  // 补帧到 48fps：先弹确认，再调后端（纯 CPU；5 秒片 480x864 约 15 秒、768x1344 约 35 秒）
+  {
+    const btn = insp.querySelector('#btnInterp')
+    if (btn) {
+      btn.onclick = async () => {
+        const st = s.state || {}
+        const src = st.chosen_video || st.video || ''
+        if (!src) { toast('这一镜还没有成片，先出视频', true); return }
+        const name = src.split(/[\\/]/).pop()
+        const yes = confirm(
+          '把这一镜的成片补帧到 48fps？\n\n'
+          + '· 源片：' + name + '\n'
+          + '· 用 ffmpeg 运动补偿插帧（纯 CPU，不占显存）\n'
+          + '· 5 秒片实测：480x864 约 15 秒，768x1344 约 35 秒；片子越长越久\n'
+          + '· 产物存到 出片 目录，文件名 <镜号>_48fps.mp4，并进成片列表\n'
+          + '· 补完会把这一镜的母版换成它（拼接 / 续接都用这条）\n\n'
+          + '原片不会被删。')
+        if (!yes) return
+        btn.disabled = true
+        const old = btn.textContent
+        btn.textContent = '补帧中…'
+        const say = (m) => { const el = document.getElementById('genStatus'); if (el) el.textContent = m }
+        say('补帧中…（这一镜）')
+        try {
+          const r = await api(`/api/shot/${S.ep}/${s.id}/interp`, { method: 'POST' })
+          say(`补帧完成：${(r.fps || '48fps')} · ${r.seconds}s · ${r.mb} MB · 用了 ${r.took}s`)
+          toast('补帧完成，母版已换成 48fps 那条')
+          renderInspector()
+        } catch (e) {
+          say('补帧失败：' + (e.message || e))
+          toast('补帧失败：' + (e.message || e), true)
+          btn.disabled = false
+          btn.textContent = old
+        }
+      }
+    }
+  }
 
   // 变量按钮：插到目标框的光标处。
   //   · 整段写那排写死了 data-tok-in，就只往整段那个框里插；

@@ -533,6 +533,52 @@ def gen_bundle(ep: str, eid: str, body: BundleBody):
     raise HTTPException(status_code=404, detail=f"没有角色 {eid}")
 
 
+@app.post("/api/shot/{ep}/{sid}/interp")
+def shot_interp(ep: str, sid: str):
+    """把这一镜当前母版补帧到 48fps，产物存出片目录、进成片列表、设为新母版。
+
+    补帧走 ffmpeg 的 minterpolate（纯 CPU）：一条 5 秒片约 15 秒。
+    不用 RIFE —— 仓库文档里量过，RIFE 会把面部高频抖动抬高 45%。
+    """
+    shot = store.shot(ep, sid)
+    st = shot.get("state") or {}
+    src = st.get("chosen_video") or st.get("video") or ""
+    if not src or not os.path.isfile(src):
+        raise HTTPException(status_code=400, detail="这一镜还没有成片，先出视频再补帧")
+    if "48" in str(media.probe(src).get("fps") or ""):
+        raise HTTPException(status_code=400, detail="这条母版已经是 48fps 了")
+
+    out = os.path.join(AGENT, "出片", store.slug(ep), f"{sid}_48fps.mp4")
+    t0 = time.time()
+    try:
+        media.interpolate(src, out)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    took = round(time.time() - t0, 1)
+    info = media.probe(out)
+    # 补帧版也要进成片列表：卡片缩略图和列表都按 video_runs 取
+    runs = list(st.get("video_runs") or [])
+    src_run = next((r for r in runs if r.get("path") == src), {})
+    poster = ""
+    try:
+        poster = media.poster(out, os.path.join(
+            AGENT, "projects", store.slug(ep), "assets", f"{sid}_poster_48fps.png"))
+    except Exception as exc:  # noqa: BLE001 - 封面失败不该挡补帧
+        print(f"  ! 补帧版抽封面失败：{exc}")
+    runs = [r for r in runs if r.get("path") != out]
+    runs.append({"path": out, "seed": src_run.get("seed") or st.get("video_seed"),
+                 "prompt": src_run.get("prompt") or "", "poster": poster,
+                 "interpolated_from": src,
+                 "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+    store.set_state(ep, sid, video_runs=runs, video=out, chosen_video=out,
+                    interpolated_from=src)
+    print(f"  补帧 {ep}/{sid}：{os.path.basename(src)} → {os.path.basename(out)} "
+          f"{info.get('duration')}s {info.get('fps')} 用了 {took}s")
+    return {"ok": True, "path": out, "seconds": info.get("duration"),
+            "fps": info.get("fps"), "took": took,
+            "mb": round(os.path.getsize(out) / 2**20, 2)}
+
+
 @app.post("/api/shot/{ep}/{sid}/frame")
 def shot_frame(ep: str, sid: str, body: dict):
     """镜头出首帧：角色主参考 + 场景参考 + 镜头描述，一次生成一张。

@@ -364,6 +364,8 @@ main { display: flex; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
 /* 画布：多成片 + 母版 + 衔接虚线 */
 .badge.master { background: #1c3a2a; color: #5fd39a; border-color: #2f6b4d; }
+/* 已补帧：跟「母版」的绿区分开，用蓝紫 */
+.badge.interp { background: #2a2340; color: #b79cff; border-color: #4b3f74; }
 button.pick {
   margin-left: auto; font-size: 10px; padding: 1px 7px; cursor: pointer;
   background: #1b2632; color: #9fd0f0; border: 1px solid #2f4457; border-radius: 4px;

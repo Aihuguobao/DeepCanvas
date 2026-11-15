@@ -176,6 +176,23 @@ def concat(clips: list[str], out: str, subtitle: str = "") -> str:
     return out
 
 
+# 补帧用的滤镜：运动补偿插帧。仓库文档量过——RIFE 会把面部抖动抬高 45%，只用这个。
+INTERP_48 = ("minterpolate=fps=48:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
+
+
+def interpolate(src: str, out: str, flt: str = INTERP_48) -> str:
+    """单条成片补帧到 48fps（纯 CPU，不吃显存）。音轨原样保留。"""
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    args = [ffmpeg(), "-y", "-i", src, "-vf", flt,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart", out]
+    r = _run(args, timeout=3600)
+    if r.returncode != 0:
+        raise RuntimeError(f"补帧失败\n{(r.stderr or '')[-1500:]}")
+    return out
+
+
 def make_srt(rows: list[tuple[float, float, str]], path: str) -> str:
     """rows: (开始秒, 结束秒, 文本)。"""
     def ts(sec: float) -> str:

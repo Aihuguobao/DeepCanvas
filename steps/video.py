@@ -85,6 +85,45 @@ def _ordered(items: list[dict]) -> list[dict]:
     return list(items)
 
 
+# 首帧出片（fl2v）的输出尺寸上限：按面积算，等于 1088×1920 那块（2.09 MP），防 OOM。
+H3_FL2V_MAX_MP = 2.09
+
+
+def _align16(v: float) -> int:
+    """H3 的 latent 按 16 对齐；向下取整，宁可小一点也不要超出。"""
+    return max(16, int(v) // 16 * 16)
+
+
+def _fl2v_size(shot: dict, proj: dict) -> tuple[int, int]:
+    """首帧模式出片尺寸：跟首帧图的实际像素走，不读项目里写死的值。
+
+    首帧图已经定了构图和比例，再拿项目尺寸去套等于让模型把图拉伸一遍。
+    读不到图才回落到项目尺寸，再没有就落到 1088×1920。
+    """
+    kf = str((shot.get("state") or {}).get("kf") or "")
+    w = h = 0
+    if kf and os.path.isfile(kf):
+        try:
+            from PIL import Image  # 局部导入：别的路径用不到 PIL
+            with Image.open(kf) as im:
+                w, h = im.size
+        except Exception as exc:  # noqa: BLE001 - 读不到就走回落
+            print(f"  ! 读首帧尺寸失败（{exc}），回落到项目尺寸")
+            w = h = 0
+    if not (w and h):
+        w = int(proj.get("width") or 1088)
+        h = int(proj.get("height") or 1920)
+    ow, oh = _align16(w), _align16(h)
+    mp = ow * oh / 1e6
+    if mp > H3_FL2V_MAX_MP:
+        k = (H3_FL2V_MAX_MP / mp) ** 0.5
+        ow, oh = _align16(ow * k), _align16(oh * k)
+        print(f"  首帧 {w}x{h} 面积 {mp:.2f} MP 超过上限 {H3_FL2V_MAX_MP}，等比缩到 {ow}x{oh}")
+    else:
+        print(f"  首帧 {w}x{h} → 出片 {ow}x{oh}（16 对齐）")
+    return ow, oh
+
+
 def _preflight(ep: str, sid: str, text: str, refs: list[dict],
                allow_free: bool = False) -> list[str]:
     """出片前的硬检查：配置不对就直接拒绝，不许靠我"觉得没问题"。
@@ -262,7 +301,8 @@ def run(ep: str, sid: str, dry: bool = False, engine: str = "", force: bool = Fa
 
     # 秒数可被调用方覆盖（画布出片弹窗里的时长下拉，需求）
     seconds = float(seconds_override or shot.get("seconds") or 4)
-    width, height = int(proj.get("width", 1088)), int(proj.get("height", 1920))
+    # 尺寸只在首帧模式（h3）用到，按首帧图定；ref2v 走的 _vw/_vh 在下面单独算
+    width, height = _fl2v_size(shot, proj)
     # 种子策略：显式给了就用；-1 强制随机；0/缺省 = 复用这一镜上次的种子
     # 理由：对比实验必须能复现，随机种子会让"改了 A 结果变了"变得不可归因
     prev_seed = int((shot.get("state") or {}).get("video_seed") or 0)
