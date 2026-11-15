@@ -5,35 +5,26 @@
 """
 from __future__ import annotations
 
-import copy
+UNET = "krea2_turbo_fp8_scaled.safetensors"
 
 
 def krea2_edit(ref_filename: str, prompt: str, *, seed: int, prefix: str,
                width: int = 1024, height: int = 1536, steps: int = 8,
-               base: str = "moody", method: bool = False, lora: bool = True,
+               method: bool = False, lora: bool = True,
                lora_strength: float = 0.4, ref2_filename: str = "") -> dict:
-    """base: moody（写实）= moodyKrea2Mix；turbo = krea2_turbo_fp8_scaled。
+    """底模固定 krea2_turbo_fp8_scaled。
 
-    实测矩阵（同参考图、同提示词、同种子，只改这三项）：
+    实测结论（同参考图、同提示词、同种子，只换变量）：
 
-        | 变体 | 底模  | method | LoRA | 结果       |
-        | A    | moody | 关     | 关   | 马赛克块   |
-        | B    | moody | 开     | 关   | 马赛克块   |
-        | C    | turbo | 开     | 开   | 干净       |
-        | D    | turbo | 关     | 开   | 干净       |
-        | E    | moody | 关     | 开   | 干净       |
-
-    和结果唯一对齐的变量是 **LoRA**：没挂就出方块纹理，挂了就干净。
-    method 不是变量（C 开着也干净，B 开着不干净，差别在 LoRA）。
-
-    但 LoRA 强度直接决定"是不是同一个人"（同种子，front 视角）：
-        0.4 → 保留参考图的人和猫，灰底干净
-        0.7 → 猫消失，人换成另一个
-        1.0 → 换成另一个人，雨衣细节也变了
-    所以默认 0.4：够压掉方块纹理和背景，又不会把身份冲掉。
+    - 不挂 LoRA 出方块纹理，挂上就干净 —— 决定"能不能用"的是 **LoRA**，不是底模；
+    - LoRA 强度决定"是不是同一个人"（front 视角）：
+          0.4 → 保留参考图的人和猫，灰底干净
+          0.7 → 猫消失，人换成另一个
+          1.0 → 换成另一个人，雨衣细节也变了
+      所以默认 0.4：够压掉方块纹理和背景，又不会把身份冲掉；
+    - `method` 不是变量：开着关着结果一样。
     """
-    unet = ("krea2_turbo_fp8_scaled.safetensors" if base == "turbo"
-            else "krea2_turbo_fp8_scaled.safetensors")
+    unet = UNET
     g = {
         "78": {"class_type": "UNETLoader", "inputs": {"unet_name": unet, "weight_dtype": "default"}},
         "79": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
