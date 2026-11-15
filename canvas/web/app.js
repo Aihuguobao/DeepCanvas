@@ -123,6 +123,40 @@ function qwenEditReady() {
   return !((S.env.models_optional_missing) || []).length
 }
 
+// 显存（GB）。从 ComfyUI /system_stats 拿；拿不到返回 0 = 未知，一切按"不拦"处理。
+function vramGb() {
+  const v = S.env && S.env.vram && S.env.vram.total_gb
+  return Number(v) || 0
+}
+
+// 「用首帧出片」（FL2VA）没有低显存档版本：只有 int8 主模型 19.53 GB，
+// 显存不到 12 GB 基本带不动，硬跑就是 OOM。低于这个数就把它禁掉。
+const VRAM_FL2V_MIN = 12
+function fl2vBlocked() {
+  const v = vramGb()
+  return v > 0 && v < VRAM_FL2V_MIN
+}
+
+// 显存不够时把这一集自动切到低显存档（W4A8），省得用户去右侧下拉里找。
+// 只动 project.model_tier 一个字段；切不动就算了，不拿这个挡人。
+async function autoTierIfLowVram() {
+  const v = vramGb()
+  if (!v || v >= VRAM_FL2V_MIN) return
+  const proj = (S.data && S.data.project) || {}
+  if (String(proj.model_tier || 'default') === 'w4a8') return
+  try {
+    await api('/api/project/' + S.ep, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_tier: 'w4a8' }),
+    })
+    proj.model_tier = 'w4a8'
+    S.data.project = proj
+    toast(`显存 ${v} GB：这一集的出片档位已自动切到低显存档（W4A8）`)
+  } catch (e) {
+    /* 切不动不改状态，也不弹错 */
+  }
+}
+
 async function boot() {
   setTimeout(fitMainHeight, 0)
   await preflightEnv()
@@ -232,6 +266,7 @@ async function load() {
     requestAnimationFrame(() => focusOn(want))
   }
   if (new URLSearchParams(location.search).get('set')) $('setBtn').onclick()
+  await autoTierIfLowVram()          // 换集 / 刷新后同样按显存把档位摆平
 }
 
 function buildSizesAndLayout() {
@@ -1062,7 +1097,10 @@ function shotPanel(s) {
   if (!s) return
   const img = s.image || {}, vid = s.video || {}
   // 视频素材页签：Ref2VA 六段 / 首帧 FL2VA，默认跟当前出片模式走
-  const videoTab = S.videoTab || ((vid.mode || 'ref2v') === 'fl2v' ? 'fl2v' : 'ref2v')
+  const _fl2vBlocked = fl2vBlocked()
+  const videoTab = _fl2vBlocked
+    ? 'ref2v'
+    : (S.videoTab || ((vid.mode || 'ref2v') === 'fl2v' ? 'fl2v' : 'ref2v'))
   const cast = s.characters || []
   const sets = s.scenes || []
   const propsOn = s.props || []
@@ -1196,8 +1234,9 @@ function shotPanel(s) {
     <h3 style="margin-top:14px">视频 · 提示词素材</h3>
     <div style="display:flex;gap:6px;margin:4px 0 8px">
       <button type="button" class="ghost" data-vtab="ref2v" style="flex:1;${videoTab !== 'fl2v' ? 'background:#233445;border-color:#3a5a7a;color:#cfe0ef' : ''}">用参考图出片</button>
-      <button type="button" class="ghost" data-vtab="fl2v" style="flex:1;${videoTab === 'fl2v' ? 'background:#233445;border-color:#3a5a7a;color:#cfe0ef' : ''}">用首帧出片</button>
+      <button type="button" class="ghost" data-vtab="fl2v"${_fl2vBlocked ? ` disabled title="显存 ${vramGb()} GB：用首帧出片只有 int8 主模型（19.53 GB），显存不到 ${VRAM_FL2V_MIN} GB 跑不动"` : ''} style="flex:1;${videoTab === 'fl2v' ? 'background:#233445;border-color:#3a5a7a;color:#cfe0ef' : ''}${_fl2vBlocked ? ';opacity:.45;cursor:not-allowed' : ''}">用首帧出片${_fl2vBlocked ? '（显存不足）' : ''}</button>
     </div>
+    ${_fl2vBlocked ? `<div class="meta" style="margin:-2px 0 8px;color:#e0a33a">显存 ${vramGb()} GB：这条链没有低显存档版本（只有 int8 主模型 19.53 GB），已禁用。要用的话请上 ${VRAM_FL2V_MIN} GB 以上的显卡。</div>` : ''}
     <div class="meta" style="margin:-2px 0 8px;color:#8fa3b8">画幅（横屏 / 竖屏）在右上角切，它同时管出片尺寸和空镜比例。</div>
     ${videoTab === 'fl2v' ? '' : videoOnlySettings}
     ${videoTab === 'fl2v' ? '' : `<div class="row">${moveField(engineKey, vid.move)}${shotField(vid.shot)}</div>`}
