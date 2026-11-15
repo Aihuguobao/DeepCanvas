@@ -390,3 +390,39 @@ text.edgelabel { fill: #9fc0d8; font-size: 11px; font-family: "Microsoft YaHei",
 #inspector::-webkit-scrollbar-track { background: #10161d; }
 #inspector::-webkit-scrollbar-thumb { background: #2d4a66; border-radius: 5px; }
 #inspector::-webkit-scrollbar-thumb:hover { background: #3d6a92; }
+
+
+/* 提示词高亮：透明 textarea 浮在高亮层上面，编辑的仍是 textarea，字节不变 */
+.hl-wrap { position: relative; background: var(--panel2); border-radius: 6px; }
+.hl-wrap > textarea {
+  position: relative; z-index: 2;
+  background: transparent; color: transparent;
+  caret-color: var(--text);
+}
+.hl-wrap > .hl-layer {
+  position: absolute; inset: 0; z-index: 1;
+  overflow: hidden; pointer-events: none;
+  box-sizing: border-box;
+  border: 1px solid transparent; border-radius: 6px;
+  color: var(--text);
+}
+.hl-layer span.tk-subject { color: #6cc2ff; }
+.hl-layer span.tk-picture { color: #7ad48a; }
+.hl-layer span.tk-asset { color: #8f9dff; }
+.hl-layer span.tk-dialogue { color: #e0a33a; }
+.hl-layer span.tk-slot { color: #c58cff; }
+/* 引用无效：槽位不存在 / 台词块没闭合 */
+.hl-layer span.tk-bad { color: #e0a33a; text-decoration: underline wavy #e0a33a; }
+
+/* 变量按钮（<Subject N> / <d>台词</d>）：实线框 + 底色，跟旁边的说明文字分开 */
+.chips button.chip.ins[data-tok] {
+  border: 1px solid #3f6484;
+  background: #17222e;
+  color: #cfe0ef;
+  font-weight: 500;
+}
+.chips button.chip.ins[data-tok]:hover {
+  border-color: var(--accent);
+  background: #1d2c3b;
+  color: #fff;
+}

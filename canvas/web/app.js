@@ -877,6 +877,113 @@ function refreshSel() {
 }
 
 // ---------------------------------------------------------------- 属性面板
+// ---------------------------------------------------------------- 提示词高亮
+// 只做显示层：把 token 上色。编辑的仍是 textarea，落盘的字节一个字不改。
+const PROMPT_TOKEN = new RegExp('(<d>[\\s\\S]*?<\\/d>'
+  + '|<(?:Subject|Picture|Video|Audio) ?\\d{1,9}(?![\\d>])'
+  + '|<(?:Subject|Picture|Video|Audio) ?\\d{1,9}>'
+  + '|<d>|<\\/d>'
+  + '|@\\d{1,9})', 'g')
+
+// 校验上下文：这一镜实际挂了几张图（<Picture N> / @N 的合法上限），
+// 以及 subject_definitions 里定义了哪些 <Subject N>。
+function hlCtx() {
+  const pics = Number(insp.dataset.hlPics || '0') || 0
+  const ta = document.querySelector('textarea[data-role="video.subject_definitions"]')
+  const defs = ta ? ta.value : ''
+  const subs = new Set()
+  for (const m of defs.matchAll(/<Subject (\d{1,3})>/g)) subs.add(Number(m[1]))
+  return { pics, subs }
+}
+
+function hlClass(tok, ctx, openCounts) {
+  const num = (re) => {
+    const m = tok.match(re)
+    return m ? Number(m[1]) : NaN
+  }
+  if (tok === '<d>' || tok === '</d>') return 'tk-bad'   // 没配对的台词标记
+  // 变量标记的破损形态：缺收尾 > / 数字太长 / 标签和数字之间没空格
+  if (/^<(?:Subject|Picture|Video|Audio)/.test(tok)) {
+    const m = tok.match(/^<([A-Za-z]+) ?(\d+)/)
+    if (!tok.endsWith('>')) return 'tk-bad'
+    if (!m) return 'tk-bad'
+    if (!tok.startsWith('<' + m[1] + ' ')) return 'tk-bad'
+    if (m[2].length > 3) return 'tk-bad'
+  }
+  if (tok.startsWith('<d>')) {
+    return openCounts.dOpen === openCounts.dClose ? 'tk-dialogue' : 'tk-bad'
+  }
+  if (tok.startsWith('<Subject')) {
+    const n = num(/^<Subject (\d{1,3})>/)
+    if (ctx.subs.size > 0 && !ctx.subs.has(n)) return 'tk-bad'
+    return 'tk-subject'
+  }
+  if (tok.startsWith('<Picture')) {
+    const n = num(/^<Picture (\d{1,3})>/)
+    return (ctx.pics > 0 && (n < 1 || n > ctx.pics)) ? 'tk-bad' : 'tk-picture'
+  }
+  if (tok.startsWith('<Video') || tok.startsWith('<Audio')) return 'tk-asset'
+  const at = num(/^@(\d{1,2})$/)
+  return (ctx.pics > 0 && (at < 1 || at > ctx.pics)) ? 'tk-bad' : 'tk-slot'
+}
+
+function hlHtml(text, ctx) {
+  const s = String(text == null ? '' : text)
+  const openCounts = {
+    dOpen: (s.match(/<d>/g) || []).length,
+    dClose: (s.match(/<\/d>/g) || []).length,
+  }
+  let out = ''
+  let last = 0
+  PROMPT_TOKEN.lastIndex = 0
+  let m
+  while ((m = PROMPT_TOKEN.exec(s)) !== null) {
+    out += esc(s.slice(last, m.index))
+    out += `<span class="${hlClass(m[0], ctx, openCounts)}">${esc(m[0])}</span>`
+    last = m.index + m[0].length
+  }
+  return out + esc(s.slice(last)) + '\n'
+}
+
+function attachHL(ta) {
+  if (!ta || ta.tagName !== 'TEXTAREA') return
+  if (ta.dataset.hl === '1' && ta._hlSync) { ta._hlSync(); return }
+  const wrap = document.createElement('div')
+  wrap.className = 'hl-wrap'
+  ta.parentNode.insertBefore(wrap, ta)
+  wrap.appendChild(ta)
+  const layer = document.createElement('div')
+  layer.className = 'hl-layer'
+  wrap.insertBefore(layer, ta)
+  ta.dataset.hl = '1'
+  // 字体/内边距必须逐像素抄过来，否则高亮会偏
+  const cs = getComputedStyle(ta)
+  for (const k of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'textIndent',
+    'whiteSpace', 'wordBreak', 'overflowWrap', 'textAlign']) {
+    layer.style[k] = cs[k]
+  }
+  const sync = () => {
+    layer.innerHTML = hlHtml(ta.value, hlCtx())
+    layer.scrollTop = ta.scrollTop
+    layer.scrollLeft = ta.scrollLeft
+  }
+  ta._hlSync = sync
+  ta.addEventListener('input', () => {
+    sync()
+    if (ta.dataset.role === 'video.subject_definitions') {
+      document.querySelectorAll('.hl-wrap > textarea').forEach((o) => {
+        if (o !== ta && o._hlSync) o._hlSync()
+      })
+    }
+  })
+  ta.addEventListener('scroll', () => {
+    layer.scrollTop = ta.scrollTop
+    layer.scrollLeft = ta.scrollLeft
+  })
+  sync()
+}
+
 function renderInspector() {
   if (S.sel.size === 0) { insp.innerHTML = '<div class="empty">选中一个节点</div>'; return }
   if (S.sel.size > 1) { insp.innerHTML = `<div class="empty">已选 ${S.sel.size} 个节点<br>（批量操作下一版接）</div>`; return }
@@ -900,6 +1007,31 @@ const SUBJ_DEF_PLACEHOLDER =
   '<Subject 1> is the man in <Picture 1>.\n'
   + '<Subject 2> is the young woman in <Picture 2>.\n'
   + '<Subject 3> is the alley in <Picture 3>.'
+
+// 「整段写」的骨架提示。用 placeholder 而不是默认值：预填但不落盘等于
+// 界面上看着"已经写了"、后端拿到的还是空，那是骗人的（① 那里踩过一次）。
+const RAW_PROMPT_PLACEHOLDER =
+  'subject_definitions:\n'
+  + '<Subject 1> is the person in <Picture 1>.\n'
+  + '<Subject 2> is the person in <Picture 2>.\n'
+  + '<Subject 3> is the location in <Picture 3>.\n'
+  + '<Subject 4> is the spoken line <d>[Chinese] 台词</d>.\n'
+  + '\n'
+  + 'summary:\n'
+  + '（这一段发生什么：谁先动手、接触点在哪、东西最后落在哪）\n'
+  + '\n'
+  + 'retention_analysis:\n'
+  + '<Subject 1> (appears in every shot): identity_preserved - 脸、发型、身体来自 <Picture 1>，服装是这一镜的起始状态。\n'
+  + '<Subject 2> (appears in every shot): fully_preserved - 所在空间来自 <Picture 2>，整镜留在画面里。\n'
+  + '\n'
+  + 'detailed_description:\n'
+  + '（一个动作一行，按先后顺序排，每行一句）\n'
+  + '\n'
+  + 'overall_soundscape:\n'
+  + '（环境音：脚步声、呼吸、远处的声音）\n'
+  + '\n'
+  + 'non_diegetic_music:\n'
+  + 'N/A'
 
 const HELP = {
   'char.look': '外形锚点：只写"能拿帧核对"的细节。\n· 落在身体部位上，说明左右：右颧骨下方一颗小黑痣\n· 用量词，不写形容词：头发垂到锁骨、胡茬铺到下颌\n· 身高/体型必须写具体数字：身高168cm、身材匀称、腿部比例自然（别写"九头身/大长腿"，模型不认形容词，只认数字）\n· 3–8 条就够，越多越摊薄\n例：深眼窝，灰白胡茬铺到下颌，左眉尾一道旧疤，寸头，身高182cm，肩宽腿长',
@@ -1098,6 +1230,11 @@ function shotPanel(s) {
   const img = s.image || {}, vid = s.video || {}
   // 视频素材页签：Ref2VA 六段 / 首帧 FL2VA，默认跟当前出片模式走
   const _fl2vBlocked = fl2vBlocked()
+  // 变量按钮：同一套按钮，整段写和分段写各放一份（离输入框近，少跑鼠标）
+  const tokChips = (target) => (refSlots.length ? `<div class="chips" data-tok-in="${target || ''}" style="margin:6px 0 6px">${refSlots.map((r) =>
+    `<button type="button" class="chip ins" data-tok="<Subject ${r.i}>" title="插入 <Subject ${r.i}>（${esc(r.name)}）">&lt;Subject ${r.i}&gt;</button>`).join('')}
+    <button type="button" class="chip ins" data-tok="<d></d>" title="插入台词块，光标落在中间">&lt;d&gt;台词&lt;/d&gt;</button>
+  </div>` : '')
   const videoTab = _fl2vBlocked
     ? 'ref2v'
     : (S.videoTab || ((vid.mode || 'ref2v') === 'fl2v' ? 'fl2v' : 'ref2v'))
@@ -1295,20 +1432,23 @@ function shotPanel(s) {
     <div class="meta" style="margin:10px 0 6px;color:#8fa3b8;text-align:center">—— 下面这些只管出片，不影响上面那张图 ——</div>
     ${videoOnlySettings}
     ${videoTailHtml}
-    </div>` : `<details style="margin:0 0 12px;border:1px solid #4a4433;border-left:4px solid #e8b84b;border-radius:6px;padding:10px 12px;background:#221f18">
+    </div>` : `<details id="rawBox" ${S.rawOpen ? 'open' : ''} style="margin:0 0 12px;border:1px solid #4a4433;border-left:4px solid #e8b84b;border-radius:6px;padding:10px 12px;background:#221f18">
       <summary style="cursor:pointer;color:#e8b84b;font-size:13px;font-weight:600;line-height:1.5">整段写 —— 直接写一整套提示词</summary>
       <div class="meta" style="margin:6px 0 0;color:#c9b98a">填在这里，下面①②③④⑤⑥就全部作废，一个字都不用管。</div>
       <div class="field" style="margin-top:8px"><label>整段提示词（原样发给模型）</label>
-        <textarea data-role="video.raw_prompt">${esc(vid.raw_prompt || '')}</textarea>
+        <textarea data-role="video.raw_prompt" placeholder="${esc(RAW_PROMPT_PLACEHOLDER)}">${esc(vid.raw_prompt || '')}</textarea>
+        ${tokChips('video.raw_prompt')}
         <div class="meta">写法见 <a href="/doc/help#2-2-多参考图-ref2va-六段式" target="_blank" style="color:var(--accent)">帮助文档 · 2.2 多参考图</a>（六项怎么写、整段怎么用）</div></div>
     </details>
-    <div class="meta" style="margin:0 0 6px;color:#8fa3b8;text-align:center">—— 或者一项一项填，下面六项 ——</div>
+    <details id="segBox" ${S.segOpen === false ? '' : 'open'} style="margin:0 0 12px;border:1px solid var(--line);border-left:4px solid #4a6d8c;border-radius:6px;padding:10px 12px;background:var(--panel2)">
+      <summary style="cursor:pointer;color:#9fc4e0;font-size:13px;font-weight:600;line-height:1.5">分段写 —— 一项一项填，下面六项</summary>
+      <div class="meta" style="margin:6px 0 0;color:#8fa3b8">这个框填了就用它；上面「整段写」也填了的话，整段优先。</div>
+      ${tokChips('')}
     <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
       <span>① 谁、在哪${helpIcon('video.subject_definitions')}</span></label>
       <textarea data-role="video.subject_definitions" placeholder="${esc(SUBJ_DEF_PLACEHOLDER)}">${esc(vid.subject_definitions || '')}</textarea>
       <div class="meta">勾选上面的角色 / 场景会自动写好，直接用；要补参考图里没有的东西，见
-        <a href="/doc/help#2-2-1-细化主体定义" target="_blank" style="color:var(--accent)">帮助文档 · 2.2.1 细化主体定义</a></div>
-      <div class="meta" style="color:#8fa3b8">一行一个主体，只写"是谁"，不要复述长相和穿着——外观由参考图负责</div></div>
+        <a href="/doc/help#2-2-1-细化主体定义" target="_blank" style="color:var(--accent)">帮助文档 · 2.2.1 细化主体定义</a></div></div>
     <div class="field"><div style="display:flex;justify-content:space-between;align-items:center">
       <span>② 这一段发生什么${helpIcon('video.summary')}</span>
       <button type="button" class="ghost" data-trans="video.summary" style="padding:1px 7px;font-size:11px">译成英文</button></div>
@@ -1335,12 +1475,27 @@ function shotPanel(s) {
     <div class="field"><label style="display:flex;justify-content:space-between;align-items:center">
       <span>⑥ 配乐（可空）</span></label>
       <input type="text" data-role="video.music" value="${esc(vid.music || '')}"></div>
-    <div class="meta" style="margin-top:-4px;color:#8fa3b8">例：低频电子脉冲，慢速，结尾骤然停（留空输出 N/A）</div>`}
+    <div class="meta" style="margin-top:-4px;color:#8fa3b8">例：低频电子脉冲，慢速，结尾骤然停（留空输出 N/A）</div>
+    </details>`}
     ${videoTab === 'fl2v' ? '' : `<button type="button" class="ghost" id="btnAutoSix" style="width:100%;margin:4px 0 8px">自动填好上面六项（再手动改）</button>
     <button type="button" class="primary" id="btnTransAll" style="width:100%;margin:2px 0 6px">全部译成英文（六段一起翻）</button>
     ${videoTailHtml}`}
     <div class="note">「用参考图出片」：直接拿角色图 + 场景图 + 你写的文字去生成，不需要首帧。<br>
       「用首帧出片」：先在上面出好一张首帧图，再让它往下演——镜头会真的动起来。</div>`
+
+  // 两个折叠框都记住展开 / 收起（重渲染后要还原，否则点一次按钮框就关了）
+  {
+    const seg = insp.querySelector('#segBox')
+    if (seg) {
+      seg.addEventListener('toggle', () => { S.segOpen = seg.open })
+      if (S.segOpen === undefined) S.segOpen = seg.open
+    }
+    const rawBox = insp.querySelector('#rawBox')
+    if (rawBox) {
+      rawBox.addEventListener('toggle', () => { S.rawOpen = rawBox.open })
+      if (S.rawOpen === undefined) S.rawOpen = rawBox.open
+    }
+  }
 
   // 视频素材页签：Ref2VA / 首帧，切换同时落盘 video.mode（出片读的就是它）
   insp.querySelectorAll('button[data-vtab]').forEach((b) => {
@@ -1598,6 +1753,74 @@ function shotPanel(s) {
       if (ta.onchange) ta.onchange()
     })
   })
+
+  // 变量按钮：插到目标框的光标处。
+  //   · 整段写那排写死了 data-tok-in，就只往整段那个框里插；
+  //   · 分段写那排没写死，就插到最后点过的框里。
+  // 光标不在目标框里时追加到末尾——不然会出现"点了没反应"（字进到别的框去了）。
+  let lastTa = null
+  insp.addEventListener('focusin', (e) => {
+    if (e.target && e.target.tagName === 'TEXTAREA') lastTa = e.target
+  })
+  const tokTarget = (btn) => {
+    const host = btn.closest('.chips')
+    const forced = host && host.dataset.tokIn
+    if (forced) return insp.querySelector(`textarea[data-role="${forced}"]`)
+    return lastTa
+  }
+  insp.querySelectorAll('button[data-tok]').forEach((btn) => {
+    let pos = null
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      const ta = tokTarget(btn)
+      const focused = ta && document.activeElement === ta
+      pos = (focused && ta.selectionStart != null) ? ta.selectionStart : null
+    })
+    btn.addEventListener('click', (e) => {
+      e.preventDefault()
+      const ta = tokTarget(btn)
+      if (!ta) return
+      const tok = btn.dataset.tok
+      let at = pos != null ? pos : ta.value.length
+      // 光标如果正落在某个 <...> 里面，先挪到那个 token 的末尾，
+      // 否则插进去会把原 token 剖开，拼出 <Subject 11111> 这种残件
+      const v = ta.value
+      const left = v.lastIndexOf('<', at - 1)
+      const right = v.indexOf('>', left < 0 ? at : left)
+      if (left >= 0 && right >= at - 1 && v.lastIndexOf('>', at - 1) < left) {
+        at = right + 1
+      }
+      ta.value = ta.value.slice(0, at) + tok + ' ' + ta.value.slice(at)
+      const next = tok === '<d></d>' ? at + 3 : at + tok.length + 1
+      ta.focus()
+      ta.selectionStart = ta.selectionEnd = next
+      pos = next
+      // 保存可能触发面板重渲染，重渲染会把 focus 丢掉 —— 登记一下，重渲染后再落回这个框
+      const role = ta.dataset.role
+      S.pendingFocus = { role, pos: next }
+      setTimeout(() => {
+        if (S.pendingFocus && S.pendingFocus.role === role) S.pendingFocus = null
+      }, 1200)
+      ta.dispatchEvent(new Event('input'))
+      if (ta.onchange) ta.onchange()
+    })
+  })
+
+  // 提示词高亮 + 引用校验
+  insp.dataset.hlPics = String(refSlots.length)
+  insp.querySelectorAll('textarea[data-role]').forEach(attachHL)
+
+  // 刚点过变量按钮：焦点和光标还回那个框（重渲染后 textarea 是新节点，得重新定位）
+  if (S.pendingFocus) {
+    const pf = S.pendingFocus
+    const t2 = insp.querySelector(`textarea[data-role="${pf.role}"]`)
+    if (t2) {
+      t2.focus()
+      const at2 = Math.min(pf.pos, t2.value.length)
+      t2.selectionStart = t2.selectionEnd = at2
+      S.pendingFocus = null
+    }
+  }
 
   // 一张卡带几张参考图：主参考 1 张 + 多角度/表情/服装图各算 1 张（和 core/refs.py 的预算同口径）
   const cardRefCount = (kind, id) => {
