@@ -1,4 +1,4 @@
-# 短剧画布 · 安装与运行手册
+# GuoBaoCanvas · 短剧画布 安装与运行手册
 
 > 目标读者：**一台刚装好 Windows、什么环境都没配的新电脑**。
 > 照这份文档做完，双击 `启动画布.bat` 就能在浏览器里打开画布。
@@ -44,16 +44,16 @@
 两种方式任选：
 
 ```bat
-:: 有 git（在当前目录下建一个 DeepCanvas 文件夹）
-git clone <本仓库地址> DeepCanvas
+:: 有 git（在当前目录下建一个 GuoBaoCanvas 文件夹）
+git clone <本仓库地址> GuoBaoCanvas
 ```
 
-或者直接在 GitHub 页面点 **Code → Download ZIP**，解压到比如 D 盘根目录下的 `DeepCanvas` 文件夹。
+或者直接在 GitHub 页面点 **Code → Download ZIP**，解压到比如 D 盘根目录下的 `GuoBaoCanvas` 文件夹。
 
 解压后目录里应该能看到：
 
 ```
-DeepCanvas\
+GuoBaoCanvas\
 ├── 启动画布.bat        ← 双击这个
 ├── 关闭画布.bat
 ├── 安装依赖.bat        ← 一键装 Python 依赖（新电脑先跑这个）
@@ -64,7 +64,7 @@ DeepCanvas\
 └── projects\           ← 你的集（首次运行后才有内容）
 ```
 
-**路径建议纯英文、别太长**（例如 D 盘根目录下的 `DeepCanvas`）。
+**路径建议纯英文、别太长**（例如 D 盘根目录下的 `GuoBaoCanvas`）。
 中文路径 Python 本身能读（放在中文名的文件夹里也能跑），但 `pip`、个别节点脚本在中文路径上偶发怪问题，能避就避。
 
 ---
@@ -430,7 +430,7 @@ out\canvas.log          ← 画布后端日志（报错都在这）
 ## 12. 目录结构（运行后）
 
 ```
-DeepCanvas\
+GuoBaoCanvas\
 ├── 启动画布.bat / 关闭画布.bat
 ├── requirements.txt
 ├── settings.json          ← 首次保存设置后生成（含 API key，别外传，已在 .gitignore）
