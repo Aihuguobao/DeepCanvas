@@ -548,7 +548,7 @@ def shot_interp(ep: str, sid: str):
     if "48" in str(media.probe(src).get("fps") or ""):
         raise HTTPException(status_code=400, detail="这条母版已经是 48fps 了")
 
-    out = os.path.join(AGENT, "出片", store.slug(ep), f"{sid}_48fps.mp4")
+    out = os.path.join(AGENT, "out", f"{sid}_48fps.mp4")
     t0 = time.time()
     try:
         media.interpolate(src, out)
