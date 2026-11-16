@@ -401,6 +401,11 @@ text.edgelabel { fill: #9fc0d8; font-size: 11px; font-family: "Microsoft YaHei",
   background: transparent; color: transparent;
   caret-color: var(--text);
 }
+.hl-wrap > textarea:focus {
+  color: var(--text);
+  background: var(--panel2);
+}
+.hl-wrap:focus-within > .hl-layer { visibility: hidden; }
 .hl-wrap > .hl-layer {
   position: absolute; inset: 0; z-index: 1;
   overflow: hidden; pointer-events: none;

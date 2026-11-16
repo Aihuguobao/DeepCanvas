@@ -989,6 +989,23 @@ function attachHL(ta) {
   }
   const sync = () => {
     layer.innerHTML = hlHtml(ta.value, hlCtx())
+    const cs = getComputedStyle(ta)
+    const bL = parseFloat(cs.borderLeftWidth) || 0
+    const bT = parseFloat(cs.borderTopWidth) || 0
+    const pL = parseFloat(cs.paddingLeft) || 0
+    const pR = parseFloat(cs.paddingRight) || 0
+    const pT = parseFloat(cs.paddingTop) || 0
+    const pB = parseFloat(cs.paddingBottom) || 0
+    const s = layer.style
+    s.left = (ta.offsetLeft + bL + pL) + 'px'
+    s.top = (ta.offsetTop + bT + pT) + 'px'
+    s.right = 'auto'
+    s.bottom = 'auto'
+    s.width = Math.max(0, ta.clientWidth - pL - pR) + 'px'
+    s.height = Math.max(0, ta.clientHeight - pT - pB) + 'px'
+    s.padding = '0'
+    s.border = '0'
+    s.boxSizing = 'content-box'
     layer.scrollTop = ta.scrollTop
     layer.scrollLeft = ta.scrollLeft
   }
@@ -1005,6 +1022,14 @@ function attachHL(ta) {
     layer.scrollTop = ta.scrollTop
     layer.scrollLeft = ta.scrollLeft
   })
+  if (window.ResizeObserver) {
+    let raf = 0
+    const ro = new ResizeObserver(() => {
+      if (raf) return
+      raf = requestAnimationFrame(() => { raf = 0; sync() })
+    })
+    ro.observe(ta)
+  }
   sync()
 }
 
