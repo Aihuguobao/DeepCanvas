@@ -183,7 +183,7 @@ def interpolate(src: str, out: str, flt: str = INTERP_48) -> str:
     args = [ffmpeg(), "-y", "-i", src, "-vf", flt,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart", out]
+            "-shortest", "-movflags", "+faststart", out]
     r = _run(args, timeout=3600)
     if r.returncode != 0:
         raise RuntimeError(f"补帧失败\n{(r.stderr or '')[-1500:]}")

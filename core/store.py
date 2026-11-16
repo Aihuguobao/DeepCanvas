@@ -92,7 +92,7 @@ def episodes() -> list[str]:
 
 
 def create(ep: str, title: str = "", style: str = "gamecg", engine: str = "h3ref",
-           width: int = 1088, height: int = 1920) -> dict:
+           width: int = 1088, height: int = 1920, fps: int = 24) -> dict:
     proj = {
         "episode": slug(ep),
         "title": title or slug(ep),
@@ -101,7 +101,8 @@ def create(ep: str, title: str = "", style: str = "gamecg", engine: str = "h3ref
         # 方向必须落盘：前端在缺字段时按竖屏显示，后端 _aspect_of 也默认竖屏。
         # 以前不写这个字段，顶栏显示竖屏、后端却按横屏算。
         "orientation": "portrait",
-        "fps": 24,
+        # 一集定死一个帧率（建集时定）：24 = 原速；48 = 每镜出片后自动补帧。
+        "fps": int(fps),
         "width": width,
         "height": height,
         "created": time.strftime("%Y-%m-%d %H:%M:%S"),

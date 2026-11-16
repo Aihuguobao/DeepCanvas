@@ -534,48 +534,134 @@ def gen_bundle(ep: str, eid: str, body: BundleBody):
 
 @app.post("/api/shot/{ep}/{sid}/interp")
 def shot_interp(ep: str, sid: str):
-    """把这一镜当前母版补帧到 48fps，产物存出片目录、进成片列表、设为新母版。
-
-    补帧走 ffmpeg 的 minterpolate（纯 CPU）：一条 5 秒片约 15 秒。
-    不用 RIFE —— 仓库文档里量过，RIFE 会把面部高频抖动抬高 45%。
-    """
-    shot = store.shot(ep, sid)
-    st = shot.get("state") or {}
-    src = st.get("chosen_video") or st.get("video") or ""
-    if not src or not os.path.isfile(src):
-        raise HTTPException(status_code=400, detail="这一镜还没有成片，先出视频再补帧")
-    if "48" in str(media.probe(src).get("fps") or ""):
-        raise HTTPException(status_code=400, detail="这条母版已经是 48fps 了")
-
-    out = os.path.join(AGENT, "out", f"{sid}_48fps.mp4")
-    t0 = time.time()
+    _reload_pipeline()
+    from steps import interp as interp_step
     try:
-        media.interpolate(src, out)
+        return interp_step.run(ep, sid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    took = round(time.time() - t0, 1)
-    info = media.probe(out)
-    # 补帧版也要进成片列表：卡片缩略图和列表都按 video_runs 取
+
+
+@app.post("/api/shot/{ep}/{sid}/forget")
+def forget_run(ep: str, sid: str, body: dict):
+    """把某条成片从这一镜移除。
+
+    文件在画布 out 目录里的就一起删（连它自己的封面）；ComfyUI 那边的原片不动。
+    删掉的正好是当前母版时，自动退回剩下的最后一条。
+    """
+    path = str((body or {}).get("path") or "").strip()
+    shot = store.shot(ep, sid)
+    st = shot.get("state") or {}
     runs = list(st.get("video_runs") or [])
-    src_run = next((r for r in runs if r.get("path") == src), {})
-    poster = ""
+    hit = next((r for r in runs if r.get("path") == path), None)
+    if not hit:
+        raise HTTPException(status_code=400, detail="这个路径不在本镜的成片列表里")
+
+    removed, note = [], ""
+    clip_root = os.path.realpath(os.path.join(AGENT, "out"))
+    asset_root = os.path.realpath(os.path.join(AGENT, "projects"))
+    targets = [("片子", path, clip_root), ("封面", str(hit.get("poster") or ""), asset_root)]
+    for label, p, root in targets:
+        if not p or not os.path.isfile(p):
+            continue
+        real = os.path.realpath(p)
+        try:
+            inside = os.path.commonpath([real, root]) == root
+        except ValueError:
+            inside = False
+        if not inside:
+            if label == "片子":
+                note = "文件不在画布 out 目录里，只移除了记录"
+            continue
+        try:
+            os.remove(real)
+            removed.append(label)
+        except OSError as exc:
+            note = f"{label}删不掉：{exc}"
+
+    runs = [r for r in runs if r.get("path") != path]
+    patch: dict = {"video_runs": runs}
+    if st.get("chosen_video") == path or st.get("video") == path:
+        last = runs[-1] if runs else {}
+        patch.update(video=last.get("path") or "", chosen_video=last.get("path") or "",
+                     video_seed=last.get("seed") or 0, chosen_seed=last.get("seed") or 0,
+                     interpolated_from="")
+    store.set_state(ep, sid, **patch)
+    return {"ok": True, "removed": removed, "note": note, "runs": len(runs),
+            "video": patch.get("video", st.get("video") or "")}
+
+
+@app.get("/api/film/{ep}/plan")
+def film_plan(ep: str):
+    _reload_pipeline()
+    from steps import concat_film
     try:
-        poster = media.poster(out, os.path.join(
-            AGENT, "projects", store.slug(ep), "assets", f"{sid}_poster_48fps.png"))
-    except Exception as exc:  # noqa: BLE001 - 封面失败不该挡补帧
-        print(f"  ! 补帧版抽封面失败：{exc}")
-    runs = [r for r in runs if r.get("path") != out]
-    runs.append({"path": out, "seed": src_run.get("seed") or st.get("video_seed"),
-                 "prompt": src_run.get("prompt") or "", "poster": poster,
-                 "interpolated_from": src,
-                 "at": time.strftime("%Y-%m-%d %H:%M:%S")})
-    store.set_state(ep, sid, video_runs=runs, video=out, chosen_video=out,
-                    interpolated_from=src)
-    print(f"  补帧 {ep}/{sid}：{os.path.basename(src)} → {os.path.basename(out)} "
-          f"{info.get('duration')}s {info.get('fps')} 用了 {took}s")
-    return {"ok": True, "path": out, "seconds": info.get("duration"),
-            "fps": info.get("fps"), "took": took,
-            "mb": round(os.path.getsize(out) / 2**20, 2)}
+        return concat_film.plan(ep)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _job_film(job_id: str, ep: str, seq: list[str]) -> None:
+    job = JOBS[job_id]
+    try:
+        _reload_pipeline()
+        from steps import concat_film
+        job["status"] = "running"
+        job["progress"] = "拼接中…"
+        rep = concat_film.run(ep, seq, on_log=lambda m: job.update(progress=str(m).strip()[:120]))
+        job["progress"] = "完成"
+        if rep["ok"]:
+            job["status"] = "done"
+            job["result"] = rep
+        else:
+            job["status"] = "error"
+            job["error"] = ("成片断言没过（片已写出，别当成品用）：\n"
+                            + "\n".join(x for x in rep["report"].splitlines() if "🔴" in x))
+            job["result"] = rep
+    except Exception as e:  # noqa: BLE001 - 全部回传给前端
+        job["status"] = "error"
+        job["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        job["ended"] = time.time()
+
+
+@app.post("/api/film/{ep}")
+def film_concat(ep: str, body: dict):
+    seq = [str(x).strip() for x in (body or {}).get("seq") or [] if str(x).strip()]
+    if not seq:
+        raise HTTPException(status_code=400, detail="没选要拼的镜头")
+    if len(set(seq)) != len(seq):
+        raise HTTPException(status_code=400, detail="同一镜重复出现在拼接顺序里")
+    job_id = uuid.uuid4().hex[:8]
+    JOBS[job_id] = {"id": job_id, "status": "queued", "ep": ep, "sid": "", "kind": "film",
+                    "started": time.time(), "seq": seq}
+    threading.Thread(target=_job_film, args=(job_id, ep, seq), daemon=True).start()
+    return {"ok": True, "job": job_id}
+
+
+@app.post("/api/film/rename")
+def film_rename(body: dict):
+    path = str((body or {}).get("path") or "").strip()
+    name = str((body or {}).get("name") or "").strip()
+    if not path or not os.path.isfile(path):
+        raise HTTPException(status_code=400, detail="文件不存在")
+    out_root = os.path.realpath(os.path.join(AGENT, "out"))
+    real = os.path.realpath(path)
+    if os.path.commonpath([real, out_root]) != out_root:
+        raise HTTPException(status_code=400, detail="只允许改 out 目录里的文件")
+    if not name:
+        raise HTTPException(status_code=400, detail="给个名字")
+    if name != os.path.basename(name) or ".." in name or any(c in name for c in '\\/:*?"<>|'):
+        raise HTTPException(status_code=400, detail="名字里不能带路径或 \\ / : * ? \" < > |")
+    if not name.lower().endswith(".mp4"):
+        name += ".mp4"
+    new_path = os.path.join(os.path.dirname(real), name)
+    if os.path.exists(new_path) and os.path.realpath(new_path) != real:
+        raise HTTPException(status_code=400, detail=f"已经有同名文件：{name}")
+    os.replace(real, new_path)
+    return {"ok": True, "path": new_path}
 
 
 @app.post("/api/shot/{ep}/{sid}/frame")
@@ -1637,6 +1723,11 @@ def _reload_pipeline() -> None:
         importlib.reload(m)
     from steps import video as _v
     importlib.reload(_v)
+    for _name in ("interp", "concat_film"):
+        try:
+            importlib.reload(importlib.import_module(f"steps.{_name}"))
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _job_video(job_id: str, ep: str, sid: str, engine: str, seed: int,
@@ -1647,6 +1738,7 @@ def _job_video(job_id: str, ep: str, sid: str, engine: str, seed: int,
     """
     job = JOBS[job_id]
     runs: list[dict] = []
+    _fps48 = int((store.read(ep, "project") or {}).get("fps") or 24) >= 48
     try:
         _reload_pipeline()
         from steps import video as video_step
@@ -1678,6 +1770,14 @@ def _job_video(job_id: str, ep: str, sid: str, engine: str, seed: int,
                          "at": time.strftime("%Y-%m-%d %H:%M:%S")})
             # 每跑完一条就落盘一次完整列表，别等最后（中间可能被打断）
             store.set_state(ep, sid, video_runs=list(runs))
+            if _fps48:
+                job["progress"] = f"第 {i + 1}/{count} 条 · 补帧 48fps"
+                try:
+                    from steps import interp as interp_step
+                    interp_step.run(ep, sid, out.get("path") or "")
+                    runs = list((store.shot(ep, sid).get("state") or {}).get("video_runs") or [])
+                except Exception as _exc:  # noqa: BLE001 - 补帧失败不该毁掉已出的片
+                    print(f"  ! 自动补帧失败，保留 24fps 母版：{_exc}")
         job["status"] = "done"
         job["result"] = {"path": runs[-1].get("path") if runs else None,
                          "prompt": runs[-1].get("prompt") if runs else None,
@@ -1949,7 +2049,13 @@ def create_episode(body: dict):
                             detail="集名只能用英文、数字、下划线，例如 EP03 或 EP03_rain")
     if key in store.episodes():
         raise HTTPException(status_code=400, detail=f"{key} 已存在")
-    proj = store.create(key, (body or {}).get("title") or key)
+    try:
+        fps = int((body or {}).get("fps") or 24)
+    except (TypeError, ValueError):
+        fps = 24
+    if fps not in (24, 48):
+        raise HTTPException(status_code=400, detail="帧率只支持 24 或 48")
+    proj = store.create(key, (body or {}).get("title") or key, fps=fps)
     return {"ok": True, "episode": proj["episode"], "project": proj}
 
 

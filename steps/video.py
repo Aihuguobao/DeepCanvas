@@ -617,9 +617,30 @@ def run(ep: str, sid: str, dry: bool = False, engine: str = "", force: bool = Fa
     except Exception as exc:  # noqa: BLE001 - 复制失败不该毁掉记录
         print(f"  ! latest 副本失败：{exc}")
 
+    # 片子归画布：把最终片搬进 out\单片\<集>\，state 指向画布里的那份。
+    # ComfyUI 那边只留它自己的时间戳原片（那是它的历史记录，不归画布管）。
+    try:
+        _agent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        dst_dir = os.path.join(_agent, "out", "单片", store.slug(ep))
+        os.makedirs(dst_dir, exist_ok=True)
+        _stamp = time.strftime("%Y%m%d_%H%M%S")
+        dst = os.path.join(dst_dir, f"{sid}_s{int(seed or 0)}_{_stamp}.mp4")
+        shutil.move(path, dst)
+        if raw_path and raw_path != path and os.path.isfile(raw_path):
+            raw_dst = os.path.join(dst_dir, f"{sid}_s{int(seed or 0)}_{_stamp}_raw.mp4")
+            shutil.move(raw_path, raw_dst)
+            raw_path = raw_dst
+        path = dst
+        print(f"✓ 搬进画布 {dst}")
+    except Exception as exc:  # noqa: BLE001 - 搬不动就留在原路径，别把片弄丢
+        print(f"  ! 搬进画布失败，保留原路径：{exc}")
+
     store.set_state(ep, sid, video=path, video_raw=raw_path, video_engine=engine, video_seed=seed,
                     video_mode=("fl2v" if engine == "h3" else "ref2v"),
                     video_prompt=text, video_seconds=info["duration"],
+                    # 出片时**实际用的**衔接方式：卡片徽标读这个，不读下拉框当前值。
+                    video_link=str(locals().get("link")
+                                   or (shot.get("video") or {}).get("link") or "none").lower(),
                     last_frame=last_png,
                     video_at=time.strftime("%Y-%m-%d %H:%M:%S"))
     print(f"✓ 视频 {path}  {info['duration']}s {info['size']}")

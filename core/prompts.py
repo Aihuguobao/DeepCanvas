@@ -313,7 +313,7 @@ def _h3_official(shot: dict, style: str, move: str) -> str:
     framing = (str(v.get("shot") or "").strip()
                or vocab.english("size", img.get("size", ""))
                or "medium shot")
-    parts.append(f"[Shot 1] {engines.h3_style(style)}, {framing}.")
+    parts.append(f"[Shot 1] {framing}.")
     parts.append("The subjects shown in <Picture 1> keep their appearance, clothing and the "
                  "layout of the scene unchanged.")
     if s6["summary"]:
@@ -558,10 +558,9 @@ def h3_ref_prompt(shot: dict, style: str, move: str, refs: list[dict]) -> str:
             keep_lines.append(f"<Subject {subj_no}> (appears in [Shot 1]): fully_preserved - "
                               f"identity, clothing and props as defined above are retained.")
 
-    # ---- detailed_description：风格句在 [Shot 1] 之前
+    # ---- detailed_description：景别 → 主体锚点 → 动作链
     framing = (str(v.get("shot") or "").strip()
                or vocab.english("size", img.get("size", "")) or "medium shot")
-    style_line = f"The target video is in a {engines.h3_style(style).lower()} style."
     # 这一镜里有没有"人"：只有场景参考时，整段必须走纯环境文案（见下方注释）
     # 道具卡不算"人"——否则只有场景+道具的空镜会被写成人镜
     has_char = any(str(r.get("kind") or "") == "char" for r in refs)
@@ -680,7 +679,7 @@ def h3_ref_prompt(shot: dict, style: str, move: str, refs: list[dict]) -> str:
         "\n".join(keep_lines),
         "",
         "detailed_description:",
-        _speech_breaks(manual_detail or (style_line + " " + " ".join(shot_bits))),
+        _speech_breaks(manual_detail or " ".join(shot_bits)),
         "",
         "overall_soundscape:",
         _sections(shot, style, framing=False)["overall_soundscape"],

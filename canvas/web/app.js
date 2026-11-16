@@ -203,10 +203,15 @@ $('newEpBtn').onclick = async () => {
   const id = (prompt('新集编号，例如 EP03 或 03（字母会自动转成大写）') || '').trim().toUpperCase()
   if (!id) return
   const title = (prompt('这集的标题（可空）') || '').trim() || id
+  const fps = confirm('这一集的出片帧率：\n\n'
+    + '【确定】48fps —— 每镜出片后自动补帧（纯 CPU，5 秒片约 35 秒）\n'
+    + '【取消】24fps —— 原速，不补帧\n\n'
+    + '建完就定死，这一集里所有镜头都按这个帧率。')
+    ? 48 : 24
   try {
     const r = await api('/api/episodes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, title }),
+      body: JSON.stringify({ id, title, fps }),
     })
     // 服务端会把集名规整成 EPxx，跳转用它返回的那个
     location.href = `?ep=${encodeURIComponent(r.episode)}`
@@ -390,9 +395,11 @@ function shotNode(s) {
   const runs = videoRuns(s)
   const dot = runs.length ? 'ok' : ((s.video || {}).summary ? 'pending' : '')
   const beats = (s.beats || []).length
-  const lk = String((s.video || {}).link || 'none')
+  const cfgLink = String((s.video || {}).link || 'none')
+  const recLink = String((s.state || {}).video_link || '')
+  const lk = recLink || (runs.length ? '' : cfgLink)
   // 四种衔接方式各写各的，别再把「硬切 / 只打底」都显示成黑场
-  const lkZh = ({ none: '硬切', black: '黑场', latent: '接续', latent_head: '只打底' })[lk] || '硬切'
+  const lkZh = ({ none: '硬切', black: '黑场', latent: '接续', latent_head: '只打底' })[lk] || ''
   // 成片直接放进镜头卡片里（2026-11-04 用户要求：视频别单独飘一个框，排版乱）
   const master = runs.find((r) => r.master) || runs[runs.length - 1]
   let vidBox = ''
@@ -417,7 +424,7 @@ function shotNode(s) {
       <div class="meta" style="margin-top:6px">
         <span class="badge">${s.seconds || 6}s</span>
         <span class="badge">${beats} 拍</span>
-        <span class="badge master">${lkZh}</span>
+        ${lkZh ? `<span class="badge master">${lkZh}</span>` : ''}
         <span class="badge">${runs.length ? runs.length + ' 条成片' : '缺视频'}</span>
         ${(() => {
           // 母版是不是补过帧的：状态里记着 interpolated_from，或者文件名带 _48fps
@@ -577,6 +584,14 @@ function renderStats() {
   // 横竖屏
   const ori = $('projOri')
   if (ori) ori.value = ((S.data.project || {}).orientation === 'landscape') ? 'landscape' : 'portrait'
+  const fpsEl = $('epFps')
+  if (fpsEl) {
+    const epFps = Number((S.data.project || {}).fps) || 24
+    fpsEl.textContent = epFps >= 48 ? '48fps · 出片后自动补帧' : '24fps'
+    fpsEl.title = epFps >= 48
+      ? '这一集是 48fps：每个镜头出片完自动补帧（建集时定的，改不了）'
+      : '这一集是 24fps：出片不补帧（建集时定的）'
+  }
 }
 
 $('projOri').onchange = async () => {
@@ -1107,6 +1122,7 @@ function runListHtml(s) {
     return `<div class="runrow${isCur ? ' on' : ''}">
       <span class="meta" style="flex:1;word-break:break-all">${esc(String(r.seed))} · ${esc(name)}</span>
       <button type="button" class="ghost" data-pick="${esc(r.path)}"${isCur ? ' disabled' : ''}>${isCur ? '当前母版' : '用这条'}</button>
+      <button type="button" class="ghost" data-forget="${esc(r.path)}" title="移除这条成片（画布 out 目录里的文件一起删）" style="padding:0 6px;color:#e8615a">删</button>
     </div>`
   }).join('')
   return `<div class="field"><label>本镜成片（${runs.length} 条）</label>
@@ -1114,9 +1130,18 @@ function runListHtml(s) {
     <div class="meta">衔接、末帧都取「当前母版」；没选就是最后一条</div></div>`
 }
 
+let pendingSave = null
+
+async function flushSaves() {
+  if (!pendingSave) return
+  const p = pendingSave
+  pendingSave = null
+  try { await p } catch (e) { /* 保存失败各自 handler 会提示 */ }
+}
+
 function bindFields(handler) {
   insp.querySelectorAll('[data-role]').forEach((el) => {
-    el.onchange = () => handler(el.dataset.role, el.value)
+    el.onchange = () => { pendingSave = handler(el.dataset.role, el.value) }
   })
 }
 
@@ -1354,7 +1379,6 @@ function shotPanel(s) {
   insp.innerHTML = `
     <h3>${esc(s.id)} · 镜头</h3>
     <button class="ghost" id="btnDelShot" style="color:#e8615a;font-size:11px;padding:2px 8px;margin-bottom:8px">删除这个镜头</button>
-    <button class="ghost" id="btnInterp" style="font-size:11px;padding:2px 8px;margin-bottom:8px" title="把这一镜当前母版补帧到 48fps（纯 CPU，约 2.7 倍实时）">补帧到 48fps</button>
     ${runListHtml(s)}
     <div class="field"><label>这一镜有谁（角色，可多选）</label>
       <div class="chips">${charChips || '<span class="meta">还没有角色卡</span>'}</div></div>
@@ -1748,43 +1772,29 @@ function shotPanel(s) {
     })
   })
 
-  // 补帧到 48fps：先弹确认，再调后端（纯 CPU；5 秒片 480x864 约 15 秒、768x1344 约 35 秒）
-  {
-    const btn = insp.querySelector('#btnInterp')
-    if (btn) {
-      btn.onclick = async () => {
-        const st = s.state || {}
-        const src = st.chosen_video || st.video || ''
-        if (!src) { toast('这一镜还没有成片，先出视频', true); return }
-        const name = src.split(/[\\/]/).pop()
-        const yes = confirm(
-          '把这一镜的成片补帧到 48fps？\n\n'
-          + '· 源片：' + name + '\n'
-          + '· 用 ffmpeg 运动补偿插帧（纯 CPU，不占显存）\n'
-          + '· 5 秒片实测：480x864 约 15 秒，768x1344 约 35 秒；片子越长越久\n'
-          + '· 产物存到 出片 目录，文件名 <镜号>_48fps.mp4，并进成片列表\n'
-          + '· 补完会把这一镜的母版换成它（拼接 / 续接都用这条）\n\n'
-          + '原片不会被删。')
-        if (!yes) return
-        btn.disabled = true
-        const old = btn.textContent
-        btn.textContent = '补帧中…'
-        const say = (m) => { const el = document.getElementById('genStatus'); if (el) el.textContent = m }
-        say('补帧中…（这一镜）')
-        try {
-          const r = await api(`/api/shot/${S.ep}/${s.id}/interp`, { method: 'POST' })
-          say(`补帧完成：${(r.fps || '48fps')} · ${r.seconds}s · ${r.mb} MB · 用了 ${r.took}s`)
-          toast('补帧完成，母版已换成 48fps 那条')
-          renderInspector()
-        } catch (e) {
-          say('补帧失败：' + (e.message || e))
-          toast('补帧失败：' + (e.message || e), true)
-          btn.disabled = false
-          btn.textContent = old
-        }
+
+  insp.querySelectorAll('[data-forget]').forEach((b) => {
+    b.onclick = async () => {
+      const p = b.dataset.forget
+      const name = String(p).split(/[\\/]/).pop()
+      if (!confirm(`把这条成片删掉？\n\n${name}\n\n画布 out 目录里的文件会一起删；ComfyUI 里的原片不动。`)) return
+      b.disabled = true
+      try {
+        const r = await api(`/api/shot/${S.ep}/${s.id}/forget`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: p }),
+        })
+        toast(r.removed && r.removed.length
+          ? `已删除（${r.removed.join('/')}）`
+          : (r.note || '已从成片列表移除'))
+        await load()
+        S.sel.clear(); S.sel.add('shot:' + s.id); refreshSel()
+      } catch (e) {
+        toast('删除失败：' + String(e.message).slice(0, 160), true)
+        b.disabled = false
       }
     }
-  }
+  })
 
   // 变量按钮：插到目标框的光标处。
   //   · 整段写那排写死了 data-tok-in，就只往整段那个框里插；
@@ -2132,6 +2142,7 @@ function shotPanel(s) {
       return
     }
     // 生成前停：先把视频提示词给用户看（模式取上面页签落盘的 video.mode）
+    await flushSaves()
     const mode = String((vid || {}).mode || (s.state || {}).video_mode || 'ref2v')
     let built
     try {
@@ -2934,6 +2945,7 @@ async function openFrameGen(ep, sid) {
   m.classList.remove('hidden')
 
   try {
+    await flushSaves()
     const prev = await api(`/api/prompt/${ep}/${sid}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'fl2v' }),
@@ -3540,6 +3552,204 @@ function fitMainHeight() {
   m.style.minHeight = h + 'px'
   if (new URLSearchParams(location.search).get('dbg') === '1') showDbg()
 }
+
+const FILM = { rows: [], order: [], sel: new Set(), busy: false, dragId: null }
+
+async function filmOpen() {
+  const m = $('filmModal')
+  if (!m) return
+  $('filmTitle').textContent = `拼成片 · ${S.ep}`
+  $('filmStatus').textContent = ''
+  FILM.sel.clear()
+  m.classList.remove('hidden')
+  await filmLoad()
+}
+
+async function filmLoad() {
+  const box = $('filmList')
+  const sum = $('filmSummary')
+  if (!box) return
+  box.innerHTML = '<div class="meta">正在读本集镜头…</div>'
+  let plan
+  try {
+    plan = await api(`/api/film/${S.ep}/plan`)
+  } catch (e) {
+    box.innerHTML = `<div class="meta" style="color:#e8615a">读不到：${esc(String(e.message))}</div>`
+    return
+  }
+  FILM.rows = plan.shots || []
+  const kept = FILM.order.filter((id) => FILM.rows.some((r) => r.id === id))
+  if (kept.length !== FILM.order.length || !kept.length) {
+    FILM.order = FILM.rows.map((r) => r.id)
+  }
+  FILM.sel = new Set([...FILM.sel].filter((id) => {
+    const r = FILM.rows.find((x) => x.id === id)
+    return r && r.exists && !(r.problems || []).length
+  }))
+  if (!FILM.sel.size) {
+    FILM.rows.forEach((r) => { if (r.exists && !(r.problems || []).length) FILM.sel.add(r.id) })
+  }
+  filmRender()
+  if (sum && plan.relay_error) sum.textContent = `relay 不可用：${plan.relay_error}`
+}
+
+function filmRender() {
+  const box = $('filmList')
+  if (!box) return
+  const rows = FILM.order.map((id) => FILM.rows.find((r) => r.id === id)).filter(Boolean)
+  box.innerHTML = rows.map((r, i) => {
+    const probs = r.problems || []
+    const on = FILM.sel.has(r.id)
+    const srcPath = r.poster || r.path || ''
+    const media = !r.exists
+      ? '<div class="meta" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">无成片</div>'
+      : (r.poster
+        ? `<img src="${fpathLive(r.poster)}" draggable="false" style="width:100%;height:100%;object-fit:cover">`
+        : `<video src="${fpathLive(r.path)}" muted preload="metadata" draggable="false"
+             style="width:100%;height:100%;object-fit:cover"></video>`)
+    return `<div class="film-tile" draggable="true" data-film-id="${esc(r.id)}"
+      title="${esc(r.name || '')}"
+      style="width:132px;padding:6px;border-radius:8px;background:#151b23;cursor:grab;
+             border:1px solid ${probs.length ? '#e8615a' : 'var(--line)'};opacity:${on ? 1 : 0.45}">
+      <div style="position:relative;width:100%;aspect-ratio:9/16;overflow:hidden;border-radius:5px;background:#0d131a">
+        ${media}
+        <input type="checkbox" data-film-check="${esc(r.id)}"${on ? ' checked' : ''}${r.exists && !probs.length ? '' : ' disabled'}
+          style="position:absolute;top:4px;left:4px;width:15px;height:15px;cursor:pointer">
+        <span style="position:absolute;top:4px;right:4px;background:#000b;color:#cfe0ef;border-radius:4px;
+          padding:0 5px;font-size:11px;line-height:17px">${i + 1}</span>
+      </div>
+      <div class="meta" style="margin-top:4px;line-height:1.35">
+        <b>${esc(r.id)}</b>${r.exists ? ` · ${r.width}×${r.height}<br>${r.fps}fps · ${r.seconds}s` : ''}
+      </div>
+      ${probs.length ? `<div class="meta" style="color:#e8615a;margin-top:3px">${probs.map(esc).join('；')}</div>` : ''}
+      <div style="height:${srcPath ? 0 : 0}px"></div>
+    </div>`
+  }).join('')
+
+  box.querySelectorAll('[data-film-check]').forEach((el) => {
+    el.onchange = () => {
+      if (el.checked) FILM.sel.add(el.dataset.filmCheck)
+      else FILM.sel.delete(el.dataset.filmCheck)
+      const tile = el.closest('.film-tile')
+      if (tile) tile.style.opacity = el.checked ? 1 : 0.45
+      filmUpdateSummary()
+    }
+  })
+
+  box.querySelectorAll('.film-tile').forEach((tile) => {
+    tile.addEventListener('dragstart', (e) => {
+      FILM.dragId = tile.dataset.filmId
+      tile.style.opacity = 0.3
+      try {
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', FILM.dragId)
+      } catch (_) { /* 老浏览器 */ }
+    })
+    tile.addEventListener('dragover', (e) => {
+      if (!FILM.dragId || FILM.dragId === tile.dataset.filmId) return
+      e.preventDefault()
+      const rect = tile.getBoundingClientRect()
+      const after = (e.clientX - rect.left) > rect.width / 2
+      const target = tile.dataset.filmId
+      FILM.order = FILM.order.filter((x) => x !== FILM.dragId)
+      let idx = FILM.order.indexOf(target)
+      if (idx < 0) idx = FILM.order.length - 1
+      FILM.order.splice(after ? idx + 1 : idx, 0, FILM.dragId)
+      const dragEl = box.querySelector(`.film-tile[data-film-id="${FILM.dragId}"]`)
+      if (dragEl) box.insertBefore(dragEl, after ? tile.nextSibling : tile)
+      filmUpdateSummary()
+    })
+    tile.addEventListener('dragend', () => {
+      FILM.dragId = null
+      filmRender()
+    })
+  })
+
+  filmUpdateSummary()
+}
+
+function filmUpdateSummary() {
+  const sum = $('filmSummary')
+  const go = $('filmGo')
+  const rows = FILM.order.map((id) => FILM.rows.find((r) => r.id === id)).filter(Boolean)
+  const picked = FILM.order.filter((id) => FILM.sel.has(id))
+  const total = rows.filter((r) => FILM.sel.has(r.id)).reduce((n, r) => n + (Number(r.seconds) || 0), 0)
+  if (sum) {
+    sum.textContent = picked.length
+      ? `已选 ${picked.length} 段 · 合计 ${total.toFixed(2)} 秒 · 顺序：${picked.join(' → ')}`
+      : '一段都没勾'
+  }
+  if (go) go.disabled = FILM.busy || !picked.length
+}
+
+async function filmGo() {
+  if (FILM.busy) return
+  const seq = FILM.order.filter((id) => FILM.sel.has(id))
+  if (!seq.length) return
+  const go = $('filmGo')
+  const st = $('filmStatus')
+  FILM.busy = true
+  if (go) go.disabled = true
+  if (st) st.textContent = '提交…'
+  let job
+  try {
+    const r = await api(`/api/film/${S.ep}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seq }),
+    })
+    job = r.job
+  } catch (e) {
+    if (st) st.textContent = '✗ ' + String(e.message).slice(0, 200)
+    FILM.busy = false
+    filmRender()
+    return
+  }
+  const t0 = Date.now()
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500))
+    let j
+    try {
+      j = await api('/api/job/' + job)
+    } catch (e) {
+      if (st) st.textContent = '✗ 查询失败：' + String(e.message).slice(0, 160)
+      break
+    }
+    const secs = Math.round((Date.now() - t0) / 1000)
+    if (j.status === 'running' || j.status === 'queued') {
+      if (st) st.textContent = `${j.progress || '拼接中…'}（${secs}s）`
+      continue
+    }
+    if (j.status === 'done') {
+      const res = j.result || {}
+      if (st) st.textContent = `✓ 完成：${String(res.out || '').split(/[\\/]/).pop()} · ${res.seconds}s · ${res.frames} 帧 · ${res.mb} MB · ${res.took}s（${res.mode}）`
+      const base = String(res.out || '').split(/[\\/]/).pop().replace(/\.mp4$/i, '')
+      const name = prompt('成片已写出，要不要改个名字？（留空保持默认）', base)
+      if (name !== null && name.trim() && name.trim() !== base) {
+        try {
+          const rn = await api('/api/film/rename', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: res.out, name: name.trim() }),
+          })
+          if (st) st.textContent = `✓ 完成：${String(rn.path).split(/[\\/]/).pop()}`
+        } catch (e) {
+          toast('改名失败：' + String(e.message).slice(0, 120), true)
+        }
+      }
+      break
+    }
+    if (st) st.textContent = '✗ ' + String(j.error || '拼接失败').slice(0, 300)
+    if (j.result && j.result.report) showModal('拼接报告', String(j.result.report))
+    break
+  }
+  FILM.busy = false
+  filmRender()
+}
+
+if ($('filmBtn')) $('filmBtn').onclick = () => filmOpen()
+if ($('filmClose')) $('filmClose').onclick = () => $('filmModal').classList.add('hidden')
+if ($('filmReload')) $('filmReload').onclick = () => filmLoad()
+if ($('filmGo')) $('filmGo').onclick = () => filmGo()
+if ($('filmModal')) $('filmModal').onclick = (e) => { if (e.target.id === 'filmModal') $('filmModal').classList.add('hidden') }
 
 function showDbg() {
   const m = document.querySelector('main')

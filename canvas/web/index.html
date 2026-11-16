@@ -23,8 +23,10 @@
     <option value="portrait">竖屏 9:16</option>
     <option value="landscape">横屏 16:9</option>
   </select>
+  <span id="epFps" style="font-size:12px;opacity:.75;white-space:nowrap"></span>
   <button id="newEpBtn" class="ghost">新建集</button>
   <button id="newShotBtn" class="ghost">新建镜头</button>
+  <button id="filmBtn" class="ghost" title="把这一集的镜头母版拼成一条成片">拼成片</button>
   <button id="fitBtn" class="ghost">适配视图</button>
   <button id="tidyBtn" class="ghost" title="按一列 5 个重新排列镜头（会清掉手动拖动的位置）">整理画布</button>
   <a id="refBtn" class="ghost" href="/doc/help" target="_blank"
@@ -174,6 +176,22 @@
       <button class="ghost" id="askNo">取消</button>
       <button class="ghost" id="askAgain" style="display:none">换一张</button>
       <button class="primary" id="askYes">开始生成</button>
+    </div>
+  </div>
+</div>
+
+<div id="filmModal" class="modal hidden">
+  <div class="modal-box" style="width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-head"><span id="filmTitle">拼成片</span><button class="ghost" id="filmClose">关闭</button></div>
+    <div style="padding:12px 14px;overflow:auto;flex:1;min-height:0">
+      <div class="meta" style="margin-bottom:8px">拖动缩略图调顺序，点左上角的勾选决定哪几段进片</div>
+      <div id="filmList" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+      <div class="meta" id="filmSummary" style="margin-top:10px"></div>
+    </div>
+    <div style="padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center">
+      <span id="filmStatus" class="meta" style="flex:1;min-width:0"></span>
+      <button class="ghost" id="filmReload" style="flex:none">刷新列表</button>
+      <button class="primary" id="filmGo" style="flex:none">开始拼</button>
     </div>
   </div>
 </div>
