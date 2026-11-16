@@ -1,4 +1,4 @@
-"""媒体处理：抽末帧、探参数、拼接、烧字幕。全部走本机自带的 ffmpeg（imageio_ffmpeg）。"""
+"""媒体处理：抽末帧、探参数、拼接。全部走本机自带的 ffmpeg（imageio_ffmpeg）。"""
 from __future__ import annotations
 
 import os
@@ -154,7 +154,7 @@ def poster(clip: str, out_png: str, at: float = 1.0) -> str:
     return out_png if r.returncode == 0 and os.path.isfile(out_png) else ""
 
 
-def concat(clips: list[str], out: str, subtitle: str = "") -> str:
+def concat(clips: list[str], out: str) -> str:
     if not clips:
         raise ValueError("没有片段可拼")
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -166,9 +166,6 @@ def concat(clips: list[str], out: str, subtitle: str = "") -> str:
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart"]
-    if subtitle and os.path.isfile(subtitle):
-        esc = subtitle.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-        args += ["-vf", f"subtitles='{esc}'"]
     args.append(out)
     r = _run(args)
     if r.returncode != 0:
@@ -191,22 +188,6 @@ def interpolate(src: str, out: str, flt: str = INTERP_48) -> str:
     if r.returncode != 0:
         raise RuntimeError(f"补帧失败\n{(r.stderr or '')[-1500:]}")
     return out
-
-
-def make_srt(rows: list[tuple[float, float, str]], path: str) -> str:
-    """rows: (开始秒, 结束秒, 文本)。"""
-    def ts(sec: float) -> str:
-        ms = int(round(sec * 1000))
-        return "%02d:%02d:%02d,%03d" % (ms // 3600000, ms // 60000 % 60, ms // 1000 % 60, ms % 1000)
-    lines = []
-    for i, (a, b, text) in enumerate(rows, 1):
-        if not text.strip():
-            continue
-        lines.append(f"{i}\n{ts(a)} --> {ts(b)}\n{text.strip()}\n")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8-sig") as f:
-        f.write("\n".join(lines))
-    return path
 
 
 def _label_img(path: str, text: str, size: int = 34) -> str:

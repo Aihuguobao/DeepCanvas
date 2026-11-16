@@ -40,7 +40,7 @@
       "produces": null,
       "confirm": false,
       "engine": null,
-      "hint": "按镜头顺序拼接，字幕按镜头时间轴排"
+      "hint": "按镜头顺序拼接"
     }
   ]
 }

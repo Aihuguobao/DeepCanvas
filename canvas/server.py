@@ -179,7 +179,6 @@ class CanvasLayout(BaseModel):
 class ShotPatch(BaseModel):
     act: str | None = None
     seconds: float | None = None
-    subtitle: str | None = None
     link: bool | None = None
     image: dict | None = None
     video: dict | None = None
@@ -2006,7 +2005,7 @@ def create_shot(ep: str, body: dict):
                   "size": "", "angle": "", "lens": "", "light_key": "", "depth": "", "tone": ""},
         "video": {"shot": "", "scene": "", "action": "", "character": "", "camera": "", "audio": "",
                   "music": "", "move": "", "structured": True},
-        "subtitle": "", "style": None, "engine": None, "state": {},
+        "style": None, "engine": None, "state": {},
     }
     shots.append(item)
     store.save_shots(ep, shots)
