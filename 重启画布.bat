@@ -22,7 +22,7 @@ timeout /t 1 >nul
 
 echo [2/3] starting the canvas ...
 if defined PYW (
-  start "" "%PYW%" tools\launch_canvas.py
+  start "" "%PYW%" tools\launch_canvas.py --no-browser
   goto done
 )
 echo.
@@ -33,6 +33,6 @@ timeout /t 20 >nul
 exit /b 1
 
 :done
-echo [3/3] done. The browser opens by itself.
+echo [3/3] done. Refresh the page that is already open; no new tab is started.
 timeout /t 2 >nul
 exit /b 0
