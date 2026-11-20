@@ -62,7 +62,8 @@ class BundleBody(BaseModel):
 
 def _allowed_roots() -> list[str]:
     """允许读写的目录：本工程产物 + 当前 ComfyUI 的 input/output（跟着设置走）。"""
-    roots = [os.path.join(AGENT, "projects"), os.path.join(AGENT, "out")]
+    roots = [os.path.join(AGENT, "projects"), os.path.join(AGENT, "out"),
+             os.path.join(AGENT, "素材")]
     root = settings.comfy_root()
     if root:
         roots += [os.path.join(root, "output"), os.path.join(root, "input")]
