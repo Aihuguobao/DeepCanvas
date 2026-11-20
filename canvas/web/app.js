@@ -3300,37 +3300,6 @@ async function saveLayout() {
 }
 
 // ---------------------------------------------------------------- 设置（ComfyUI 路径 / 权重文件 / LLM 翻译）
-const MODEL_LABELS = {
-  krea2_unet: 'Krea2 主模型（首帧/角色/空镜）',
-  krea2_clip: 'Krea2 文本编码器',
-  krea2_vae: 'Krea2 VAE',
-  qwen_edit_unet: 'Qwen-Edit 2511 主模型（多角度/去人）',
-  qwen_edit_clip: 'Qwen-Edit 文本编码器',
-  qwen_edit_vae: 'Qwen-Edit VAE（一般同 qwen_image_vae）',
-  qwen_lora_angles: '多角度 LoRA',
-  qwen_lora_lightning: 'Qwen-Edit 4 步加速 LoRA',
-  h3_clip: 'H3 文本编码器',
-  h3_video_vae: 'H3 视频 VAE',
-  h3_audio_vae: 'H3 音频 VAE',
-}
-
-function renderModelInputs(models, overridden) {
-  const box = $('setModels')
-  box.innerHTML = ''
-  const over = overridden || []
-  Object.keys(models).forEach((k) => {
-    const wrap = document.createElement('div')
-    wrap.className = 'field'
-    wrap.innerHTML = `<label>${esc(MODEL_LABELS[k] || k)}${over.includes(k) ? ' · 已改' : ''}</label>`
-    const inp = document.createElement('input')
-    inp.type = 'text'
-    inp.id = 'm_' + k
-    inp.value = models[k] || ''
-    inp.placeholder = '留空 = 用默认文件名'
-    wrap.appendChild(inp)
-    box.appendChild(wrap)
-  })
-}
 
 function renderEnvReport(r) {
   const row = (name, okText, badText, ok) =>
@@ -3489,7 +3458,6 @@ async function openSettings() {
   $('setRoot').value = cf.root || ''
   $('setRoot').placeholder = cf.root_effective ? `自动探测到 ${cf.root_effective}` : '留空 = 自动探测'
   $('setUrl').value = cf.url || ''
-  renderModelInputs(s.models || {}, s.models_overridden || [])
   $('envReport').innerHTML = ''
   $('setSimFree').checked = false
   $('envStatus').textContent = cf.root_note
@@ -3537,13 +3505,8 @@ $('setCheck').onclick = async () => {
 }
 
 $('setSave').onclick = async () => {
-  const models = {}
-  document.querySelectorAll('#setModels input').forEach((i) => {
-    if (i.id && i.id.startsWith('m_')) models[i.id.slice(2)] = i.value.trim()
-  })
   const body = {
     comfy: { root: $('setRoot').value.trim(), url: $('setUrl').value.trim() },
-    models,
     llm: { base_url: $('setBase').value.trim(), model: $('setModel').value.trim() },
   }
   const key = $('setKey').value.trim()
