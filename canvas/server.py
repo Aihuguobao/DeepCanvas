@@ -145,6 +145,8 @@ async def no_store_static(request, call_next):
     return resp
 
 
+APP_NAME = "GuoBaoCanvas · 短剧画布"
+APP_REPO = "https://github.com/Aihuguobao/GuoBaoCanvas"
 AUDIT_LOG = os.path.join(AGENT, "out", "audit.log")
 
 
@@ -250,6 +252,22 @@ def _nowin() -> dict:
     if os.name != "nt":
         return {}
     return {"creationflags": 0x08000000, "stdin": subprocess.DEVNULL}
+
+
+@app.get("/api/version")
+def app_version():
+    return {"app": APP_NAME, "repo": APP_REPO, "version": _app_version()}
+
+
+def _app_version() -> str:
+    import subprocess
+    try:
+        r = subprocess.run(["git", "-C", AGENT, "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 @app.get("/api/episodes")
 def episodes():
@@ -2354,7 +2372,8 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8766)
     ap.add_argument("--host", default="127.0.0.1")
     a = ap.parse_args()
-    print(f"画布 → http://{a.host}:{a.port}")
+    print(f"{APP_NAME} → http://{a.host}:{a.port}", flush=True)
+    print(f"来源 {APP_REPO} · 版本 {_app_version() or '-'}", flush=True)
     uvicorn.run(app, host=a.host, port=a.port, log_level="warning")
     return 0
 
