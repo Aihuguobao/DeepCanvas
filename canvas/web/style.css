@@ -187,6 +187,12 @@ main { display: flex; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .field input, .field textarea { width: 100%; }
 .field textarea { min-height: 52px; resize: vertical; font-size: 12px; }
 .field textarea[data-role="outfit"] { min-height: 110px; }
+
+/* 提示词相关的框默认 52px 太矮：六段 110、拍子 170（同首帧大框）、整段写 220 */
+.field textarea[data-role^="video."] { min-height: 110px; }
+.field textarea[data-role="beats"] { min-height: 170px; }
+.field textarea[data-role="video.raw_prompt"] { min-height: 220px; }
+
 .field-tip {
   margin-top: 4px;
   color: #6f7a8a;
