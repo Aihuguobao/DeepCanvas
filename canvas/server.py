@@ -447,14 +447,23 @@ def patch_scene(ep: str, sid: str, body: dict):
     raise HTTPException(status_code=404, detail=f"没有场景 {sid}")
 
 
+MATERIAL_DIRS = {"char": "角色", "scene": "场景", "prop": "道具"}
+
+
+def _material_dir(ep: str, kind: str) -> str:
+    """素材目录：素材\\<集>\\角色|场景|道具。kind 收 char / scene / prop。"""
+    folder = os.path.join(AGENT, "素材", store.slug(ep), MATERIAL_DIRS.get(kind, "角色"))
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
 @app.post("/api/upload/{ep}")
 async def upload(ep: str, f: UploadFile = File(...), tag: str = "sheet"):
-    """存进项目的 assets/uploads，返回绝对路径（前端拿它写进角色/场景卡）。"""
+    """存进 素材\\<集>\\角色|场景|道具，返回绝对路径（前端拿它写进卡片）。"""
     ext = os.path.splitext(f.filename or "")[1].lower() or ".png"
     if ext not in (".png", ".jpg", ".jpeg", ".webp"):
         raise HTTPException(status_code=400, detail="只收 png / jpg / webp")
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "uploads")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, tag if tag in MATERIAL_DIRS else "char")
     name = f"{tag}_{time.strftime('%Y%m%d_%H%M%S')}_{f.filename}"
     dst = os.path.join(folder, name)
     with open(dst, "wb") as out:
@@ -485,8 +494,7 @@ def gen_sheet(ep: str, eid: str, view: str, body: dict):
     if not files:
         raise HTTPException(status_code=500, detail="跑完了但没有图")
 
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "sheets")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "char")
     dst = os.path.join(folder, f"{eid}_{view}_{seed}.png")
     shutil.copy2(comfy.local_path(files[0]), dst)
 
@@ -527,8 +535,7 @@ def gen_bundle(ep: str, eid: str, body: BundleBody):
     if len(files) < len(prompts_list):
         raise HTTPException(status_code=500, detail=f"只出了 {len(files)}/{len(prompts_list)} 张")
 
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "sheets")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "char")
     items = []
     for i, (view, prompt) in enumerate(prompts_list):
         raw = os.path.join(folder, f"{eid}_mv_{view}_{seed}.png")
@@ -819,8 +826,7 @@ def gen_char_textref(ep: str, cid: str, body: dict):
     files = comfy.produced(hist, ("images",))
     if not files:
         raise HTTPException(status_code=500, detail="没出图")
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "refs")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "char")
     # 文件名带时间戳：同一个种子重生成会得到同名文件，浏览器按 URL 缓存旧图，
     # 结果就是 ComfyUI 里明明换了、画布上的缩略图还是上一张。
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -1047,8 +1053,7 @@ def gen_sheet_group(ep: str, eid: str, group: str, body: dict):
     if len(files) < len(items_def):
         raise HTTPException(status_code=500, detail=f"只出了 {len(files)}/{len(items_def)} 张")
 
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "sheets")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "char")
     tiles = []
     for i, (key, zh, _w, _h, prompt) in enumerate(items_def):
         raw = os.path.join(folder, f"{eid}_{group}_{key}_{seed}.png")
@@ -1096,8 +1101,7 @@ def gen_refsheet(ep: str, eid: str, body: dict):
         ref = ""
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "refsheet")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "char")
     out_path = os.path.join(folder, f"{eid}_{stamp}.png")
     workdir = os.path.join(folder, f"_work_{eid}_{stamp}")
     # 关键：这里不能给默认服装！给了默认值，下面的"从人设自动抽单品"就永远轮不到执行，
@@ -1642,8 +1646,7 @@ def gen_scene_plate(ep: str, sid: str, body: dict):
     files = comfy.produced(hist, ("images",))
     if not files:
         raise HTTPException(status_code=500, detail="没出图")
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "scenes")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "scene")
     dst = os.path.join(folder, f"{sid}_plate_{seed}.png")
     shutil.copy2(comfy.local_path(files[-1]), dst)
 
@@ -1681,8 +1684,7 @@ def clean_scene(ep: str, sid: str, body: dict):
     files = comfy.produced(hist, ("images",))
     if not files:
         raise HTTPException(status_code=500, detail="没出图")
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "scenes")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, "scene")
     dst = os.path.join(folder, f"{sid}_clean_{seed}.png")
     shutil.copy2(comfy.local_path(files[-1]), dst)
     for x in data["scenes"]:
@@ -2324,8 +2326,8 @@ def gen_adopt(body: dict):
     if not ep:
         raise HTTPException(status_code=400, detail="缺集号")
     name = str((body or {}).get("name") or "").strip()
-    folder = os.path.join(AGENT, "projects", store.slug(ep), "assets", "refs")
-    os.makedirs(folder, exist_ok=True)
+    folder = _material_dir(ep, {"character": "char", "scene": "scene",
+                                "prop": "prop"}.get(kind, "char"))
 
     _doc, prefix = {"character": ("characters", "char"), "scene": ("scenes", "sec"),
                     "prop": ("props", "prop")}.get(kind, ("scenes", "sec"))
