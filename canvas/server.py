@@ -2077,6 +2077,55 @@ def create_episode(body: dict):
     return {"ok": True, "episode": proj["episode"], "project": proj}
 
 
+@app.get("/api/shot/{ep}/{sid}/refs")
+def shot_refs_list(ep: str, sid: str):
+    """这一镜的参考图顺序：每条对应一个 <Picture N>（顺序和提示词里完全一致）。"""
+    import importlib
+    refs_mod = importlib.import_module("core.refs")
+    shot = store.shot(ep, sid)
+    chars = store.characters(ep)
+    scenes = {x.get("id"): x for x in store.read(ep, "scenes", {"scenes": []})["scenes"]}
+    props = {x.get("id"): x for x in store.read(ep, "props", {"props": []})["props"]}
+    owner = {}
+    for cid, c in chars.items():
+        if c.get("ref"):
+            owner[c["ref"]] = cid
+        for arr in (c.get("sheets") or {}).values():
+            for it in arr or []:
+                p = str(it.get("path") or "")
+                if p:
+                    owner[p] = cid
+    for cid, x in scenes.items():
+        if x.get("ref"):
+            owner[x["ref"]] = cid
+    for pid, x in props.items():
+        if x.get("ref"):
+            owner[x["ref"]] = pid
+    items = [{"picture": i, "kind": x.get("kind"), "role": x.get("role") or "main",
+              "id": owner.get(x.get("path"), ""), "name": x.get("name") or ""}
+             for i, x in enumerate(refs_mod.shot_refs(ep, shot), start=1)]
+    return {"shots": items}
+
+
+@app.delete("/api/episodes/{ep}")
+def delete_episode(ep: str):
+    """删掉一整集：项目数据 + 画布 out 里属于它的片。ComfyUI 的原片不动。"""
+    import shutil
+    key = store.slug(ep)
+    if key not in store.episodes():
+        raise HTTPException(status_code=404, detail=f"没有 {key} 这一集")
+    proj_dir = os.path.dirname(store.path(key, "project"))
+    removed = []
+    for d in (proj_dir,
+              os.path.join(AGENT, "out", "单片", key),
+              os.path.join(AGENT, "out", "成片", key)):
+        if os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+            removed.append(d)
+    print(f"删除集 {key}：{len(removed)} 个目录", flush=True)
+    return {"ok": True, "removed": removed, "left": store.episodes()}
+
+
 @app.post("/api/scene/{ep}")
 def create_scene(ep: str, body: dict):
     """新建空场景卡（id 可省略，自动 sec1 这种；内容由用户填或点「造空镜」）。"""

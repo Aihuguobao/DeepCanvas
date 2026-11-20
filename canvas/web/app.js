@@ -594,6 +594,20 @@ function renderStats() {
   }
 }
 
+if ($('delEpBtn')) $('delEpBtn').onclick = async () => {
+  const typed = prompt(`删除这一集会把项目数据和画布里的片一起删掉，不可恢复。\n\n要删就把集名打一遍：${S.ep}`)
+  if (typed === null) return
+  if (typed.trim() !== S.ep) { toast('集名不对，没有删除'); return }
+  try {
+    const r = await api('/api/episodes/' + encodeURIComponent(S.ep), { method: 'DELETE' })
+    const left = r.left || []
+    toast(`已删除 ${S.ep}`)
+    location.href = left.length ? `?ep=${encodeURIComponent(left[0])}` : '/'
+  } catch (e) {
+    toast('删除失败：' + String(e.message).slice(0, 160), true)
+  }
+}
+
 $('projOri').onchange = async () => {
   const val = $('projOri').value
   await api(`/api/project/${S.ep}`, {
@@ -1282,6 +1296,8 @@ function looksAutoSubject(text) {
   return lines.length > 0 && lines.every((l) => AUTO_SUBJ_RE.test(l))
 }
 
+const REF_PICS = {}
+
 function shotPanel(s) {
   if (!s) return
   const img = s.image || {}, vid = s.video || {}
@@ -1298,22 +1314,43 @@ function shotPanel(s) {
   const cast = s.characters || []
   const sets = s.scenes || []
   const propsOn = s.props || []
+  // 勾选的卡片上标 <Picture N>：编号由后端按 refs.py 算（含辅助图与 9 张上限）
+  const picsKey = `${S.ep}/${s.id}`
+  if (REF_PICS[picsKey] === undefined) {
+    REF_PICS[picsKey] = null
+    api(`/api/shot/${S.ep}/${s.id}/refs`)
+      .then((r) => {
+        REF_PICS[picsKey] = r.shots || []
+        if (S.sel.size === 1 && [...S.sel][0] === 'shot:' + s.id) renderInspector()
+      })
+      .catch(() => {})
+  }
+  const picOf = (id) => {
+    const list = REF_PICS[picsKey]
+    if (!list) return ''
+    const hit = list.find((x) => x.id === id)
+    return hit ? 'P' + hit.picture : ''
+  }
+  const picTag = (id) => {
+    const p = picOf(id)
+    return p ? `<span style="opacity:.72;margin-left:4px">${p}</span>` : ''
+  }
   const charChips = S.data.characters.map((c) => `
     <label class="chip ${cast.includes(c.id) ? 'on' : ''}">
       <input type="checkbox" data-cast="char" value="${c.id}" ${cast.includes(c.id) ? 'checked' : ''}>
-      ${esc(c.name || c.id)}${c.ref ? '' : '（缺参考）'}
+      ${esc(c.name || c.id)}${c.ref ? picTag(c.id) : '（缺参考）'}
     </label>`).join('')
   const sceneChips = S.data.scenes.map((x) => `
     <label class="chip ${sets.includes(x.id) ? 'on' : ''}">
       <input type="checkbox" data-cast="scene" value="${x.id}" ${sets.includes(x.id) ? 'checked' : ''}>
-      ${esc(x.name || x.id)}${x.ref ? '' : '（缺参考）'}
+      ${esc(x.name || x.id)}${x.ref ? picTag(x.id) : '（缺参考）'}
     </label>`).join('')
   // 道具卡：一件道具 = 一个 <Subject N>，固定靠 <Picture N> 绑定；
   // 挂太多会挤掉场景（9 张上限），预算在 core/refs.py 里按场景+道具数扣
   const propChips = (S.data.props || []).map((x) => `
     <label class="chip ${propsOn.includes(x.id) ? 'on' : ''}">
       <input type="checkbox" data-cast="prop" value="${x.id}" ${propsOn.includes(x.id) ? 'checked' : ''}>
-      ${esc(x.name || x.id)}${x.ref ? '' : '（缺参考）'}
+      ${esc(x.name || x.id)}${x.ref ? picTag(x.id) : '（缺参考）'}
     </label>`).join('')
 
   const sceneRefCount = S.data.scenes.filter((x) => sets.includes(x.id) && x.ref).length
@@ -1907,6 +1944,7 @@ function shotPanel(s) {
   // 这一镜谁在场：改完立刻存，并重画连线
   insp.querySelectorAll('input[data-cast]').forEach((box) => {
     box.onchange = async () => {
+      delete REF_PICS[`${S.ep}/${s.id}`]
       const kind = box.dataset.cast
       const key = kind === 'char' ? 'characters' : (kind === 'prop' ? 'props' : 'scenes')
       const picked = [...insp.querySelectorAll(`input[data-cast="${kind}"]:checked`)].map((x) => x.value)
